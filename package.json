@@ -1,0 +1,38 @@
+{
+    "name": "live-templates",
+    "homepage": "https://github.com/khrome/live-templates",
+    "version": "0.0.1-alpha",
+    "main": "live-templates.js",
+    "description": "Bind your templates directly to models, and get lives updates for free with no boilerplate.",
+    "keywords": [
+        "templates",
+        "model",
+        "binding"
+    ],
+    "author": "Abbey Hawk Sparrow <@khrome> (http://patternweaver.com)",
+    "contributors": [],
+    "bugs": {
+        "url": "https://github.com/khrome/live-templates/issues"
+    },
+    "license": "MIT",
+    "repository": {
+        "type": "git",
+        "url": "git://github.com/khrome/live-templates.git"
+    },
+    "dependencies": {
+        "array-events" : "*",
+        "object-events" : "*",
+        "jquery" : "*"
+    },
+    "devDependencies": {
+        "mocha": "*",
+        "chai": "*",
+        "jsdom" : "*"
+    },
+    "optionalDependencies": {
+        "handlebars" : "*"
+    },
+    "engines": {
+        "node": "*"
+    }
+}
