@@ -24,13 +24,13 @@ Live Templates allows you to register models against named values which are in t
     
 This library was built to use EventedObjects as models and EventedArrays as collections, in order to preserve the array and object usage patterns but we also allow alternative sets of models, though these are not thoroughly tested yet (resetting this resets the namespace):
 
-    //bootstrap models and collections
-    Templates.model.use('bootstrap');
+    //backbone models and collections
+    Templates.model.use('backbone');
 
 or
 
     //bootstrap models with EventedArrays as collections
-    Templates.model.use('bootstrap-hybrid');
+    Templates.model.use('backbone-hybrid');
     
 To register a model, you just have to call:
 
