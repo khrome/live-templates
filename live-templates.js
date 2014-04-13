@@ -1,6 +1,6 @@
 (function(root, factory){
     if (typeof define === 'function' && define.amd){
-        define(['array-events', 'object-events', 'jquery'], factory);
+        define(['array-events', 'object-events', 'jquery', 'Handlebars'], factory);
     }else if(typeof exports === 'object'){
         var jsdom = require('jsdom');
         var JQ;
@@ -13,14 +13,15 @@
                 if(onready) onready(JQ);
             }
         );
-        module.exports = factory(require('array-events'), require('object-events'), {ready:function(cb){
+        module.exports = factory(require('array-events'), require('object-events'), require('Handlebars'), {ready:function(cb){
             if(!JQ) onready = cb;
             else JQ.ready(cb);
         }});
     }else{
-        root.Templates = factory(root.EventedArray, root.EventedObject, root.$);
+        root.Templates = factory(root.EventedArray, root.EventedObject, root.$, root.Handlebars);
     }
-}(this, function(EventedArray, EventedObject, $){
+}(this, function(EventedArray, EventedObject, $, Handlebars){
+    var mode = 'evented';
     var root = {};
     var Templates = {};
     Templates.domSelector = $;
@@ -143,28 +144,69 @@
     Templates.loader = function(name, callback){
         
     };
+    var dynamicImports = {};
+    function rqr(modules, callback){
+        if(!Array.isArray(modules)) modules = [modules];
+        var results = 
+        return dynamicImports[module]?
+            dynamicImports[module]:
+            ( dynamicImports[module] = require(module) );
+    }
     Templates.wrap = function(object){
         if(!object) return;
-        if(Array.isArray(object)){
-            if(!EventedArray.is(object)){
-                if(
-                    object.length && 
-                    typeof object[0] == 'object' && 
-                    !EventedObject.is(object[0])
-                ){
-                    object = object.map(function(item){
-                        return new EventedObject(item);
-                    });
+        switch(mode){
+            case 'evented': //EventedArray + EventedObject
+                if(Array.isArray(object)){
+                    if(!EventedArray.is(object)){
+                        if(
+                            object.length && 
+                            typeof object[0] == 'object' && 
+                            !EventedObject.is(object[0])
+                        ){
+                            object = object.map(function(item){
+                                return new EventedObject(item);
+                            });
+                        }
+                        return new EventedArray(object, function(item){
+                            return EventedObject.is(item)?item:new EventedObject(item);
+                        });
+                    }else return object;
+                }else if(typeof object == 'object'){
+                    if(!EventedObject.is(object)) return new EventedObject(object);
+                    else return object;
                 }
-                return new EventedArray(object, function(item){
-                    return EventedObject.is(item)?item:new EventedObject(item);
-                });
-            }else return object;
-        }else if(typeof object == 'object'){
-            if(!EventedObject.is(object)) return new EventedObject(object);
-            else return object;
+                return object;
+                break;
+            case 'backbone': //Backbone Collection + Backbone Model
+                if(Array.isArray(object)){
+                    if(!EventedArray.is(object)){
+                        if(
+                            object.length && 
+                            typeof object[0] == 'object' && 
+                            !EventedObject.is(object[0])
+                        ){
+                            object = object.map(function(item){
+                                return new EventedObject(item);
+                            });
+                        }
+                        return new EventedArray(object, function(item){
+                            return EventedObject.is(item)?item:new EventedObject(item);
+                        });
+                    }else return object;
+                }else if(typeof object == 'object'){
+                    if(!EventedObject.is(object)) return new EventedObject(object);
+                    else return object;
+                }
+                return object;
+                break;
+            case 'hybrid': //Backbone Collection + Backbone Model
+                break;
+            case 'deep-backbone': //Backbone Collection + Backbone DeepModel
+                break;
+            case 'deep-hybrid': //Backbone Collection + Backbone Model
+                break;
+            default : throw new Error('unknown object mode');
         }
-        return object;
     }
     var convertMarkersToLiveHTML = function(dom){
         traverseDOM(dom, {'comment':function(node, replace){
@@ -250,6 +292,15 @@
     };
     Templates.mustacheAdapter = function mustacheAdapter(Mustache){
         //concept: use lambdas to make macros available
+    };
+    
+    Templates.use = function(type){
+        switch(type.toLowerCase()){
+            case 'handlebars':
+                Templates.engine(Templates.handlebarsAdapter(Handlebars));
+                break;
+            default : throw('Unknown template type: '+type);
+        }
     };
     return Templates;
 }));
