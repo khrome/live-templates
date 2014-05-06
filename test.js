@@ -85,7 +85,7 @@ describe('live-templates', function(){
                 });
             });
         
-            t('values in html attributes', function(complete){
+            it('values in html attributes', function(complete){
                 Templates.render('main', {}, function(domNodes){
                     $.all('ul', domNodes).attr('data-surname').should.equal('Beggler');
                     complete();
@@ -164,7 +164,7 @@ describe('live-templates', function(){
         });
     });
     
-    describe('uses Backbone and', function(){
+    /*describe('uses Backbone and', function(){
 
         before(function(){
             Templates.model.use('backbone');
@@ -179,7 +179,7 @@ describe('live-templates', function(){
         
         //todo: test model types
         
-    });
+    });*/
     
     //describe('uses Backbone Models with EventedArrays and', function(){ });
     

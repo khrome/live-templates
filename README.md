@@ -3,6 +3,10 @@ live-templates.js (A Work in Progress)
 
 By allowing templates to access many models on a namespace, you remove the need for any kind of boilerplate to bind a view to it's model allowing you to reduce MVVM or MVC to MV. In addition, because the models are directly attached to the templates, they can update themselves. It runs on the client or on the server under Node.js.
 
+Live Templates allows you to register models against named values which are in turn made available to the template. First this means that you don't have to maintain some binding boilerplate linking the objects to the DOM and Most importantly, because these templates output DOM nodes, the models are able to bind directly to it so that as the models change, any views produced from them are seamlessly updated as well, without recreating *any* nodes. That's right, at no time are we doing textual replacement. The other major difference when compared to most Model/View solutions is that live-templates can bind to any number of models or lists... I don't pretend that real interfaces bind 1:1 with the models that power them, so you don't have to do organizational gymnastics to maintain a complex interface.
+
+Your current view system is worthless by comparison.
+
 Installation
 ------------
 
@@ -18,31 +22,40 @@ inclusion through require:
 
     var Templates = require('live-templates');
 
-Usage
------
-Live Templates allows you to register models against named values which are in turn made available to the template. First this means that you don't have to maintain some binding boilerplate linking the objects to the DOM and Most importantly, because these templates output DOM nodes, the models are able to bind directly to it so that as the models change, any views produced from them are seamlessly updated as well, without recreating *any* nodes. That's right, at no time are we doing textual replacement. The other major difference when compared to most Model/View solutions is that live-templates can bind to any number of models or lists... I don't pretend that real interfaces bind 1:1 with the models that power them, so you don't have to do organizational gymnastics to maintain a complex interface.
-    
-This library was built to use EventedObjects as models and EventedArrays as collections, in order to preserve the array and object usage patterns but we also allow alternative sets of models, though these are not thoroughly tested yet (resetting this resets the namespace):
+Configuration
+-------------
+Tell it what models you want to use:
 
     //backbone models and collections
     Templates.model.use('backbone');
-
-or
-
-    //bootstrap models with EventedArrays as collections
+    
+    //backbone models with EventedArrays as collections
     Templates.model.use('backbone-hybrid');
     
-To register a model, you just have to call:
+    //backbone-deep-models with backbone collections
+    Templates.model.use('deep-backbone');
+    
+    //backbone-deep-models with EventedArrays as collections
+    Templates.model.use('deep-hybrid');
+    
+    //EventedObjects models with EventedArrays as collections
+    Templates.model.use('evented');
+    
+You also need to tell it what template system you want to use:
 
-    Templates.model(namespace, <model, Array or EventedArray of models>);
+    //only handlerbars, for now
+    Templates.use('handlebars');
+
+
+Usage
+-----
+To register a model, you just have to call `model` and if you pass in a raw array or object they are converted to your chosen type as it's registered.
+
+    Templates.model(namespace, <model or collection>);
 
 and to return it's value:
 
     Templates.model(namespace);
-    
-You'll have to tell it what templates to use (currently only handlebars)
-
-    Templates.use('handlebars');
 
 Now, any model is available for render in the template
     

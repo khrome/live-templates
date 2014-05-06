@@ -1,6 +1,6 @@
 (function(root, factory){
     if (typeof define === 'function' && define.amd){
-        define(['array-events', 'object-events', 'jquery', 'Handlebars'], factory);
+        define(['array-events', 'object-events', 'jquery', 'Handlebars', 'extended-emitter'], factory);
     }else if(typeof exports === 'object'){
         var jsdom = require('jsdom');
         var JQ;
@@ -13,14 +13,14 @@
                 if(onready) onready(JQ);
             }
         );
-        module.exports = factory(require('array-events'), require('object-events'), require('Handlebars'), {ready:function(cb){
+        module.exports = factory(require('array-events'), require('object-events'), {ready:function(cb){
             if(!JQ) onready = cb;
             else JQ.ready(cb);
-        }});
+        }}, require('Handlebars'), require('extended-emitter'));
     }else{
-        root.Templates = factory(root.EventedArray, root.EventedObject, root.$, root.Handlebars);
+        root.LiveTemplates = factory(root.EventedArray, root.EventedObject, root.$, root.Handlebars, root.ExtendedEmitter);
     }
-}(this, function(EventedArray, EventedObject, $, Handlebars){
+}(this, function(EventedArray, EventedObject, $, Handlebars, Emitter){
     var mode = 'evented';
     var root = {};
     var Templates = {};
@@ -93,6 +93,48 @@
     var uniqueID = function(){
         return Math.floor( Math.random() * 100000000 )+'';
     };
+    var getItemBreaks = function(root){
+        var itemBreaks = [];
+        traverseDOM(root, {'comment':function(node, replace){
+            var matches = (node.innerHTML || node.wholeText || node.data) === '<!--{{item}}-->';
+            if(matches) itemBreaks.push(node);
+        }});
+        return itemBreaks;
+    }
+    var insertAt = function(root, nodes, position){
+        //todo: cache this stuff
+        var itemBreaks = getItemBreaks();
+        if(itemBreaks.length > position) throw new Error('out of range insert');
+        if(itemBreaks.length === position) root.appendChild(nodes);
+        var target = itemBreaks[position];
+        root.insertBefore(nodes, target);
+    };
+    var findComment = function(root, text){
+        var root;
+        traverseDOM(root, {'comment':function(node, replace){
+            var matches = (node.innerHTML || node.wholeText || node.data) === text;
+            if(matches && !root) root = node.parentNode;
+        }});
+        return root;
+    };
+    var findBlockNumber = function(root, position){
+        var itemBreaks = getItemBreaks(root);
+        var target = root.children.indexOf(itemBreaks[position]);
+        var blocks;
+        switch(position){
+            case 0 :
+                blocks = root.children.slice(0, target);
+                break;
+            case blocks.length - 1 :
+                blocks = root.children.slice(target);
+                break;
+            default : 
+                var bottom = root.children.indexOf(itemBreaks[position-1]);
+                blocks = root.children.slice(bottom, target);
+                break;
+        }
+        return blocks;
+    };
     Templates.engine = function(eng){
         if(!eng) return engine;
         engine = eng;
@@ -108,6 +150,7 @@
             updaterModel[id] = model;
             return engine.literal('<!--[['+id+':'+fieldPath+']]-->');
         });
+        var items = {};
         engine.macro({
             name : 'models',
             type : 'block'
@@ -117,7 +160,9 @@
             var id = uniqueID();
             if(!Array.isArray(list)) return '<!-- MODEL LIST NOT FOUND -->';
             var output = '';
-            for (var i=0; i<list.length; i++) {
+            output += '<!--{{block_'+id+'_start}}-->';
+            for(var i=0; i<list.length; i++){
+                var item_id = uniqueID();
                 var data = {};
                 if(options.data){
                     data = engine.context(options.data || {});
@@ -125,18 +170,31 @@
                     data.item = list[i];
                 }
                 list[i].namekey = options.selector+'.'+i
+                output += '<!--{{item}}-->'
                 output += engine.block(list[i], data, options);
             }
-            output += '<!--{{block_'+id+'}}-->';
-            list.on('add', function(item){
+            output += '<!--{{block_'+id+'_end}}-->';
+            var root = function(){
+                //todo: index blocks on create, so they don't have to be in the DOM
+                return this.root || (this.root = findComment(document, '<!--{{block_'+id+'_start}}-->').parentNode);
+            };
+            list.on('add', function(item, index){
                 item.namekey = options.selector+'.'+(list.length-1);
                 var newHTML = engine.block(item, engine.context(options.data || {}), options);
                 var dom = Templates.domSelector.parseHTML(newHTML);
                 convertMarkersToLiveHTML(dom);
-                Templates.domSelector(blocks['block_'+id]).before(Templates.domSelector(dom));
+                var replaceableAttrs = scanAttributesFor('<!--', dom);
+                replaceableAttrs.forEach(function(replaceable){
+                    createLiveAttribute(replaceable.field, replaceable.node);
+                });
+                insertAt(root(), dom, index);
             });
-            list.on('remove', function(item){
-                
+            list.on('remove', function(item, index){
+                var rt = root();
+                var els = findBlockNumber(rt, index);
+                els.forEach(function(el){
+                    rt.removeChild(el);
+                });
             });
             return output;
         });
@@ -147,7 +205,7 @@
     var dynamicImports = {};
     function rqr(modules, callback){
         if(!Array.isArray(modules)) modules = [modules];
-        var results = 
+        //var results = 
         return dynamicImports[module]?
             dynamicImports[module]:
             ( dynamicImports[module] = require(module) );
@@ -200,22 +258,25 @@
                 return object;
                 break;
             case 'hybrid': //Backbone Collection + Backbone Model
+                throw new Error('not yet supported');
                 break;
             case 'deep-backbone': //Backbone Collection + Backbone DeepModel
+                throw new Error('not yet supported');
                 break;
             case 'deep-hybrid': //Backbone Collection + Backbone Model
+                throw new Error('not yet supported');
                 break;
             default : throw new Error('unknown object mode');
         }
     }
-    var convertMarkersToLiveHTML = function(dom){
+    var convertMarkersToLiveHTML = function(dom, emitter){
         traverseDOM(dom, {'comment':function(node, replace){
             var matches = (node.innerHTML || node.wholeText || node.data).match(/^\[\[(.*)\]\]$/);
             if(matches){
                 var parts = matches[1].split(':');
                 var id = parts[0];
                 var field = parts[1];
-                createLiveDOM(node, id, field, replace);
+                createLiveDOM(node, id, field, replace, emitter);
             }
             matches = (node.innerHTML || node.wholeText || node.data).match(/^\{\{(.*)\}\}$/);
             if(matches){
@@ -224,33 +285,134 @@
         }});
     }
     
-    var createLiveDOM = function(node, id, field, replace){
+    var createLiveDOM = function(node, id, field, replace, emitter){
         var element = Templates.domSelector.parseHTML('<span></span>')[0];
         var model = updaterModel[id];
         element.setAttribute('model-link', model.namekey);
         element.setAttribute('field-link', field);
         var container = node.parentNode;
         updaters[id] = function(){
-            element.innerHTML = model.get(field);
+            var old = element.innerHTML;
+            var newValue = model.get(field);
+            var payload = {
+                previous : old, 
+                value : newValue, 
+                field : field
+            };
+            if(emitter) emitter.emit('before-dom-update', payload);
+            element.innerHTML = newValue;
+            if(emitter) emitter.emit('dom-update', payload);
         };
         if(container && container.nodeType != 11) container.replaceChild(element, node);
         else if(replace) replace(node, element);
-        model.on('change', {field : field}, function(){
+        model.on('change', {field : field}, function(payload){
+            var payload = {
+                previous : old, 
+                value : newValue, 
+                field : field
+            };
+            if(emitter) emitter.emit('before-model-update', payload);
             updaters[id]();
+            if(emitter) emitter.emit('model-update', payload);
         });
         updaters[id]();
     }
-    Templates.render = function render(view, data, callback){
+    
+    var createLiveAttribute = function(field, node){
+        var attr = node.getAttribute(field);
+        var matches = (attr||'').match(/<!--\[\[.*?\]\]-->/g);
+        var id = uniqueID();
+        if(attr && matches){
+            //*
+            var links = []; //keep a list of the models we touch in this attr
+            updaters[id] = function(callback){
+                var value = attr;
+                matches.forEach(function(match){
+                    var parts = match.match(/<!--\[\[(.*):(.*)\]\]-->/);
+                    var modelID = parts[1];
+                    var field = parts[2];
+                    var model = updaterModel[modelID];
+                    if(model) value = value.replace(parts[0], model.get(field));
+                    if(callback) callback(model, field);
+                });
+                node.setAttribute(field, value);
+            };
+            updaters[id](function(model, field){ //the first time, we attach listeners
+                model.on('change:'+field, function(){ //if any connected field changes, rewrite attr
+                    updaters[id]();
+                });
+            });//*/
+        }
+    }
+    
+    var scanAttributesFor = function(str, root){
+        var result  = [];
+        var filterFn = function(index, item){
+            //console.log('NODE', item);
+            if(item && item.attributes) Array.prototype.forEach.call(item.attributes, function(attr, key){
+                if(attr.value.indexOf(str) != -1) result.push({field: attr.name, node:item}); 
+            })
+        };
+        var fragment = $(root || window.document);
+        fragment.find('*').add(fragment).filter(filterFn);
+        return result;
+    }
+    
+    Templates.render = function render(view, data, callback, emitter){
         engine.render(view, data, function(html){
             var dom = Templates.domSelector.parseHTML(html);
-            convertMarkersToLiveHTML(dom);
+            convertMarkersToLiveHTML(dom, emitter);
+            var replaceableAttrs = scanAttributesFor('<!--', dom);
+            replaceableAttrs.forEach(function(replaceable){
+                createLiveAttribute(replaceable.field, replaceable.node);
+            });
             callback(dom);
         });
         
     };
+    function LiveView(){
+        this.emitter = new Emitter();
+    };
+    LiveView.prototype.on = function(){ return this.emitter.on.apply(emitter, arguments); };
+    LiveView.prototype.once = function(){ return this.emitter.once.apply(emitter, arguments); };
+    LiveView.prototype.off = function(){ return this.emitter.off.apply(emitter, arguments); };
+    LiveView.prototype.emit = function(){ return this.emitter.emit.apply(emitter, arguments); };
+    LiveView.prototype.when = function(){ return this.emitter.when.apply(emitter, arguments); };
+    LiveView.prototype.activate = function(){
+        this.emitter.emit('activate');
+        
+    };
+    LiveView.prototype.deactivate = function(){
+        this.emitter.emit('deactivate');
+        
+    };
+    LiveView.prototype.focus = function(){
+        this.emitter.emit('focus');
+        
+    };
+    LiveView.prototype.blur = function(){
+        this.emitter.emit('blur');
+        
+    };
+    //proxyEventsToDOM
+    //enableModelFeedback
+    
+    
+    
+    Templates.createView = function createView(view, data, el){
+        var v = new LiveView();
+        Templates.render(view, data || {}, function(dom){
+            v.elements = dom;
+            if(el) el.appendChild(dom);
+        }, v.emitter);
+        return v;
+    };
     Templates.model = function model(name, value){
         if(!name) return undefined;
         return field(root, name, Templates.wrap(value));
+    };
+    Templates.model.use = function(type){
+        mode = type;
     };
     Templates.handlebarsAdapter = function handlebarsAdapter(Handlebars){
         var cache = {};
@@ -302,5 +464,10 @@
             default : throw('Unknown template type: '+type);
         }
     };
+    
+    Templates.component = function Component(options){
+        
+    };
+    
     return Templates;
 }));
