@@ -1,182 +1,194 @@
 (function(root, factory){
     if (typeof define === 'function' && define.amd){
-        define(['array-events', 'object-events', 'jquery', 'Handlebars', 'extended-emitter'], factory);
+        define(['array-events', 'object-events', 'jquery', 'Handlebars', 'extended-emitter', 'dom-tool'], factory);
     }else if(typeof exports === 'object'){
         var jsdom = require('jsdom');
         var JQ;
-        var onready;
+        var onready = [];
         jsdom.env(
             '<html><head></head><body></body></html>',
             ["http://code.jquery.com/jquery.js"],
             function(errors, window){
                 JQ = window.$;
-                if(onready) onready(JQ);
+                if(onready.length) onready.forEach(function(cb){
+                    cb(JQ);
+                })
             }
         );
         module.exports = factory(require('array-events'), require('object-events'), {ready:function(cb){
-            if(!JQ) onready = cb;
+            if(!JQ) onready.push(cb);
             else JQ.ready(cb);
-        }}, require('Handlebars'), require('extended-emitter'));
+        }}, require('Handlebars'), require('extended-emitter'), require('dom-tool'));
     }else{
-        root.LiveTemplates = factory(root.EventedArray, root.EventedObject, root.$, root.Handlebars, root.ExtendedEmitter);
+        root.LiveTemplates = factory(root.EventedArray, root.EventedObject, root.$, root.Handlebars, root.ExtendedEmitter, root.DOMTool);
     }
-}(this, function(EventedArray, EventedObject, $, Handlebars, Emitter){
+}(this, function(EventedArray, EventedObject, $, Handlebars, Emitter, dTool){
     var mode = 'evented';
-    var root = {};
-    var Templates = {};
-    Templates.domSelector = $;
-    var updaters = {}; //calls to bind model fields to individual view elements
-    var updaterModel = {};
-    var cache = {};
-    var blocks = {};
+    var corpse = false;
+    $.ready(function(JQ){
+        dTool.dom = JQ.parseHTML;
+        dTool.fragment = JQ;
+        dTool.attach = modelAttach;
+    });
+    console.log(Object.keys(dTool), Object.keys($));
     var engine;
-    var nodeTypeMap = {
-        ELEMENT_NODE : 1, ATTRIBUTE_NODE  : 2, TEXT_NODE : 3, CDATA_SECTION_NODE  : 4,
-        ENTITY_REFERENCE_NODE  : 5, ENTITY_NODE  : 6, PROCESSING_INSTRUCTION_NODE : 7,
-        COMMENT_NODE : 8, DOCUMENT_NODE : 9, DOCUMENT_TYPE_NODE : 10, DOCUMENT_FRAGMENT_NODE : 11,
-        NOTATION_NODE  : 12, element : 1, attribute  : 2, text : 3, cdata  : 4,
-        entity_reference  : 5, entityReference  : 5, entity  : 6, instruction : 7,
-        comment : 8, document : 9, document_type : 10, documentType : 10,
-        document_fragment : 11, documentFragment : 11, notation  : 12,
-    }
-    function isNumber(n) {
-        return !isNaN(parseFloat(n)) && isFinite(n);
-    }
-    function traverseDOM(root, nodeMap, onComplete){ //not async
-        if(typeof nodeMap == 'function'){
-            nodeMap = { 'element+text' : nodeMap }
+    
+    var root = {}; //models
+    var listOptions = {}; //the options used in rendering a list, stored by list id
+    
+    //Modes, currently hardcoded, will eventually move to their own, loadable modules
+    
+    function getModelValue(model, field){
+        switch(mode){
+            case 'backbone' :
+            
+            case 'deep-backbone' :
+            case 'evented' :
+            case 'backbone-hybrid' :
+            case 'deep-hybrid' :
+                return model.get(field);
+                break;
         }
-        if(!isNumber(Object.keys(nodeMap))){
-            var transformedMap = {};
-            Object.keys(nodeMap).forEach(function(key){
-                var keys = key.split('+');
-                keys.forEach(function(typeName){
-                    transformedMap[nodeTypeMap[typeName]] = nodeMap[key];
+    }
+    
+    function modelAttach(model, field, update){
+        switch(mode){
+            case 'backbone' :
+            case 'deep-backbone' :
+            case 'backbone-hybrid' :
+            case 'deep-hybrid' :
+                model.on('change:'+field, function(value){
+                    update(value);
+                });
+                break;
+            case 'evented' :
+                model.on('change', field, function(value){
+                    update(value);
+                });
+                break;
+        }
+    }
+    
+    function escapeRegExp(str){
+        return str.replace(/[\-\[\]\/\{\}\(\)\*\+\?\.\\\^\$\|]/g, "\\$&");
+    }
+    
+    function listAttach(list, id, root){
+        var sentinel = Templates.opener+':ITEM:'+Templates.closer;
+        var add = function(item){
+            var position = list.indexOf(item);
+            var newHTML = engine.block(item, engine.context(listOptions[id].data || {}), listOptions[id]);
+            var dom = dTool.live({
+                sentinel : new RegExp(escapeRegExp(Templates.opener)+'(.*)'+escapeRegExp(Templates.closer), 'g')
+            }, root, function(updaters){
+                Object.keys(updaters).forEach(function(id){
+                    var updater = updaters[id];
+                    var selector = updater.marker;
+                    var parts = selector.split(':');
+                    var model = Template.model(parts.shift());
+                    var field = parts.shift();
+                    modelAttach(model, field, updater.set);
                 })
             });
-            nodeMap = transformedMap;
-        }
-        if(Array.isArray(root)){ //so we can pass in the output of $.parseHTML
-            var replace = function(target, replacement){
-                var index = root.indexOf(target);
-                if(index != -1) root.splice(index, 1, replacement);
-            }
-            root.forEach(function(node){
-                if(nodeMap[node.nodeType]) nodeMap[node.nodeType](node, replace);
-                traverseDOM(node, nodeMap);
-            });
-        }else{
-            Array.prototype.forEach.apply(root.childNodes, [function(child){
-                if(nodeMap[child.nodeType]) nodeMap[child.nodeType](child, replace);
-                traverseDOM(child, nodeMap);
-            }])
-        }
-        if(onComplete) onComplete();
-    }
-    function field(root, name, value){
-        if(typeof name == 'string') return field(root, name.split('.'), value);
-        var current = root;
-        var fieldName;
-        while(name.length){
-            fieldName = name.shift();
-            if(!current[fieldName]){
-                if(value) current[fieldName] = {};
-                else return undefined;
-            }
-            if(!name.length){
-                if(value) current[fieldName] = value;
-                return current[fieldName];
-            }else current = current[fieldName];
-        }
-        return undefined;
-    }
-    var uniqueID = function(){
-        return Math.floor( Math.random() * 100000000 )+'';
-    };
-    var getItemBreaks = function(root){
-        var itemBreaks = [];
-        traverseDOM(root, {'comment':function(node, replace){
-            var matches = (node.innerHTML || node.wholeText || node.data) === '<!--{{item}}-->';
-            if(matches) itemBreaks.push(node);
-        }});
-        return itemBreaks;
-    }
-    var insertAt = function(root, nodes, position){
-        //todo: cache this stuff
-        var itemBreaks = getItemBreaks();
-        if(itemBreaks.length > position) throw new Error('out of range insert');
-        if(itemBreaks.length === position) root.appendChild(nodes);
-        var target = itemBreaks[position];
-        root.insertBefore(nodes, target);
-    };
-    var findComment = function(root, text){
-        var root;
-        traverseDOM(root, {'comment':function(node, replace){
-            var matches = (node.innerHTML || node.wholeText || node.data) === text;
-            if(matches && !root) root = node.parentNode;
-        }});
-        return root;
-    };
-    var findBlockNumber = function(root, position){
-        var itemBreaks = getItemBreaks(root);
-        var target = root.children.indexOf(itemBreaks[position]);
-        var blocks;
-        switch(position){
-            case 0 :
-                blocks = root.children.slice(0, target);
+            
+        };
+        
+        var remove = function(item, previousPosition){
+            tool.removeBlockAt(sentinel, root);
+        };
+        
+        switch(mode){
+            case 'backbone' :
+            case 'deep-backbone' :
+                list.on('add', add);
+                list.on('remove', remove);
                 break;
-            case blocks.length - 1 :
-                blocks = root.children.slice(target);
-                break;
-            default : 
-                var bottom = root.children.indexOf(itemBreaks[position-1]);
-                blocks = root.children.slice(bottom, target);
+            case 'evented' :
+            case 'backbone-hybrid' :
+            case 'deep-hybrid' :
+                list.on('add', add);
+                list.on('remove', remove);
+                //list.on('move', function(item, previousPosition){ });
                 break;
         }
-        return blocks;
-    };
+    }
+    var listOptions = {};
+    var Templates = {};
+    Templates.domSelector = $;
+    var modelStack = [];
+    function currentModelContext(){
+        return modelStack[modelStack.length -1];
+    }
+    var liveReferences = {};
+    //todo: view association for GC
     Templates.engine = function(eng){
         if(!eng) return engine;
         engine = eng;
         engine.macro('model', function(options){
             if(options.args && options.args[0] && !options.path) options.path = options.args[0];
             if(options.args && options.args[1] && !options.storeInto) options.storeInto = options.args[1];
+            var id = dTool.uniqueID();
             var parts = options.path.split(':');
             var modelPath = parts[0];
-            var fieldPath = parts[1];
-            var model = Templates.model(modelPath) || this;
-            if(modelPath) model.namekey = modelPath;
-            var id = uniqueID(); //todo: switch to uuid
-            updaterModel[id] = model;
-            return engine.literal('<!--[['+id+':'+fieldPath+']]-->');
+            var fieldPath = parts[1]; 
+            //console.log('???', modelPath);
+            var model = modelPath?Templates.model(modelPath):this;
+            if(!modelPath) Templates.modelName(this);
+            //console.log('SSS', model);
+            liveReferences[id] = {
+                type : 'item',
+                modelName : modelPath,
+                fieldName : fieldPath,
+                model : model
+            };
+            
+            if(corpse){
+                return engine.literal(getModelValue(model, fieldPath));
+            }else{
+                console.log('!!', modelPath, fieldPath);
+                return engine.literal('<!--<<<<'+id+'>>>>-->');
+            }
         });
-        var items = {};
+        
         engine.macro({
             name : 'models',
             type : 'block'
         }, function(options){
+            var id = dTool.uniqueID();
+            listOptions[id] = options;
             if(options.args && options.args[0] && !options.selector) options.selector = options.args[0];
             var list = Templates.model(options.selector);
-            var id = uniqueID();
             if(!Array.isArray(list)) return '<!-- MODEL LIST NOT FOUND -->';
             var output = '';
-            output += '<!--{{block_'+id+'_start}}-->';
-            for(var i=0; i<list.length; i++){
-                var item_id = uniqueID();
+            function makeItem(item, index, options){
                 var data = {};
                 if(options.data){
                     data = engine.context(options.data || {});
                     data.index = i;
-                    data.item = list[i];
+                    data.item = item;
                 }
-                list[i].namekey = options.selector+'.'+i
-                output += '<!--{{item}}-->'
-                output += engine.block(list[i], data, options);
+                if(!corpse) output += '<!--<<<<='+id+'>>>>-->';
+                return engine.block(list[i], data, options);
             }
-            output += '<!--{{block_'+id+'_end}}-->';
-            var root = function(){
+            if(!corpse) output += '<!--<<<<+'+id+'>>>>-->';
+            for(var i=0; i<list.length; i++){
+                modelStack.push(list[i]);
+                output += makeItem(list[i], i, options);
+                modelStack.pop();
+            }
+            if(!corpse) output += '<!--<<<<-'+id+'>>>>-->';
+            liveReferences[id] = {
+                type : 'list',
+                list : list,
+                name : options.selector,
+                makeNew : function(item){
+                    return makeItem(item, list.length, options);
+                },
+                id : id
+            };
+            /*var root = function(){
                 //todo: index blocks on create, so they don't have to be in the DOM
-                return this.root || (this.root = findComment(document, '<!--{{block_'+id+'_start}}-->').parentNode);
+                return this.root || (this.root = findComment(document, Templates.opener+id+Templates.closer).parentNode);
             };
             list.on('add', function(item, index){
                 item.namekey = options.selector+'.'+(list.length-1);
@@ -189,13 +201,16 @@
                 });
                 insertAt(root(), dom, index);
             });
+            list.on('move', function(item, index){
+                
+            });
             list.on('remove', function(item, index){
                 var rt = root();
                 var els = findBlockNumber(rt, index);
                 els.forEach(function(el){
                     rt.removeChild(el);
                 });
-            });
+            });*/
             return output;
         });
     };
@@ -269,104 +284,38 @@
             default : throw new Error('unknown object mode');
         }
     }
-    var convertMarkersToLiveHTML = function(dom, emitter){
-        traverseDOM(dom, {'comment':function(node, replace){
-            var matches = (node.innerHTML || node.wholeText || node.data).match(/^\[\[(.*)\]\]$/);
-            if(matches){
-                var parts = matches[1].split(':');
-                var id = parts[0];
-                var field = parts[1];
-                createLiveDOM(node, id, field, replace, emitter);
-            }
-            matches = (node.innerHTML || node.wholeText || node.data).match(/^\{\{(.*)\}\}$/);
-            if(matches){
-                blocks[matches[1]] = node;
-            }
-        }});
-    }
     
-    var createLiveDOM = function(node, id, field, replace, emitter){
-        var element = Templates.domSelector.parseHTML('<span></span>')[0];
-        var model = updaterModel[id];
-        element.setAttribute('model-link', model.namekey);
-        element.setAttribute('field-link', field);
-        var container = node.parentNode;
-        updaters[id] = function(){
-            var old = element.innerHTML;
-            var newValue = model.get(field);
-            var payload = {
-                previous : old, 
-                value : newValue, 
-                field : field
-            };
-            if(emitter) emitter.emit('before-dom-update', payload);
-            element.innerHTML = newValue;
-            if(emitter) emitter.emit('dom-update', payload);
-        };
-        if(container && container.nodeType != 11) container.replaceChild(element, node);
-        else if(replace) replace(node, element);
-        model.on('change', {field : field}, function(payload){
-            var payload = {
-                previous : old, 
-                value : newValue, 
-                field : field
-            };
-            if(emitter) emitter.emit('before-model-update', payload);
-            updaters[id]();
-            if(emitter) emitter.emit('model-update', payload);
-        });
-        updaters[id]();
-    }
+    Templates.opener = '<<<<';
     
-    var createLiveAttribute = function(field, node){
-        var attr = node.getAttribute(field);
-        var matches = (attr||'').match(/<!--\[\[.*?\]\]-->/g);
-        var id = uniqueID();
-        if(attr && matches){
-            //*
-            var links = []; //keep a list of the models we touch in this attr
-            updaters[id] = function(callback){
-                var value = attr;
-                matches.forEach(function(match){
-                    var parts = match.match(/<!--\[\[(.*):(.*)\]\]-->/);
-                    var modelID = parts[1];
-                    var field = parts[2];
-                    var model = updaterModel[modelID];
-                    if(model) value = value.replace(parts[0], model.get(field));
-                    if(callback) callback(model, field);
-                });
-                node.setAttribute(field, value);
-            };
-            updaters[id](function(model, field){ //the first time, we attach listeners
-                model.on('change:'+field, function(){ //if any connected field changes, rewrite attr
-                    updaters[id]();
-                });
-            });//*/
-        }
-    }
-    
-    var scanAttributesFor = function(str, root){
-        var result  = [];
-        var filterFn = function(index, item){
-            //console.log('NODE', item);
-            if(item && item.attributes) Array.prototype.forEach.call(item.attributes, function(attr, key){
-                if(attr.value.indexOf(str) != -1) result.push({field: attr.name, node:item}); 
-            })
-        };
-        var fragment = $(root || window.document);
-        fragment.find('*').add(fragment).filter(filterFn);
-        return result;
-    }
+    Templates.closer = '>>>>'
     
     Templates.render = function render(view, data, callback, emitter){
         engine.render(view, data, function(html){
-            var dom = Templates.domSelector.parseHTML(html);
-            convertMarkersToLiveHTML(dom, emitter);
-            var replaceableAttrs = scanAttributesFor('<!--', dom);
-            replaceableAttrs.forEach(function(replaceable){
-                createLiveAttribute(replaceable.field, replaceable.node);
+            console.log('HTML', html);
+            var dom = dTool.dom(html);
+            dTool.live({
+                emitter : emitter,
+                registry : liveReferences,
+                sentinel : [Templates.opener, Templates.closer],
+                onValue : function(id, link, el){
+                    var marker = link.marker.substring(
+                        Templates.opener.length,
+                        link.marker.length - Templates.closer.length
+                    );
+                    var model = link.model;
+                    var field = link.fieldName;
+                    var $el = dTool.fragment(el);
+                    $el.attr('data-model-link', link.modelName);
+                    $el.attr('data-field-link', field);
+                    link.model.on('change', {field:field}, function(value, oldValue){
+                        link.set(value);
+                    });
+                    link.set(model.get(field));
+                }
+            }, dom, function(){
+                console.log('$$2', dom.map(function(node){return (node.innerHTML || node.wholeText || node.data)}));
+                callback(dom);
             });
-            callback(dom);
         });
         
     };
@@ -397,6 +346,13 @@
     //proxyEventsToDOM
     //enableModelFeedback
     
+    function field(root, path, value){
+        if(!Array.isArray(path)) return field(root, path.split('.'), value);
+        if(path.length === 1){ //terminal
+            if(value) root[path.unshift()] = value;
+            else return root[path.unshift()];
+        }else return root[path.unshift()]?field(root[path.unshift()], path, value):undefined;
+    }
     
     
     Templates.createView = function createView(view, data, el){
@@ -409,7 +365,17 @@
     };
     Templates.model = function model(name, value){
         if(!name) return undefined;
+        if(value && value['__modelName']) throw new Error(
+            'Model is already registered as \''+
+            value['__modelName']+
+            '\', please remove this entry before trying to register this model again.'
+        );
+        if(value) value['__modelName'] = name;
         return field(root, name, Templates.wrap(value));
+    };
+    Templates.modelName = function(value){
+        if(!value) throw new Error('no model passed!');
+        return value['__modelName'];
     };
     Templates.model.use = function(type){
         mode = type;
