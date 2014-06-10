@@ -1,6 +1,6 @@
 (function(root, factory){
     if (typeof define === 'function' && define.amd){
-        define(['array-events', 'object-events', 'jquery', 'Handlebars', 'extended-emitter', 'dom-tool'], factory);
+        define(['array-events', 'object-events', 'jquery', 'Handlebars', 'extended-emitter', 'dom-tool', 'hashmap'], factory);
     }else if(typeof exports === 'object'){
         var jsdom = require('jsdom');
         var JQ;
@@ -18,11 +18,14 @@
         module.exports = factory(require('array-events'), require('object-events'), {ready:function(cb){
             if(!JQ) onready.push(cb);
             else JQ.ready(cb);
-        }}, require('Handlebars'), require('extended-emitter'), require('dom-tool'));
+        }}, require('Handlebars'), require('extended-emitter'), require('dom-tool'), require('hashmap'));
     }else{
-        root.LiveTemplates = factory(root.EventedArray, root.EventedObject, root.$, root.Handlebars, root.ExtendedEmitter, root.DOMTool);
+        root.LiveTemplates = factory(
+            root.EventedArray, root.EventedObject, root.$, root.Handlebars, 
+            root.ExtendedEmitter, root.DOMTool, root.HashMap
+        );
     }
-}(this, function(EventedArray, EventedObject, $, Handlebars, Emitter, dTool){
+}(this, function(EventedArray, EventedObject, $, Handlebars, Emitter, dTool, HashMap){
     var mode = 'evented';
     var corpse = false;
     $.ready(function(JQ){
@@ -112,12 +115,21 @@
                 break;
         }
     }
+    var map = new HashMap();
     var listOptions = {};
     var Templates = {};
     Templates.domSelector = $;
-    var modelStack = [];
-    function currentModelContext(){
-        return modelStack[modelStack.length -1];
+    //var modelStack = [];
+    var listStack = [];
+    var listNameStack = [];
+    /*function currentModelContext(){
+        return (modelStack[modelStack.length -1] && modelStack[modelStack.length -1]['__modelName']);
+    }
+    function currentListContext(){
+        return (listStack[listStack.length -1] && listStack[listStack.length -1]['__modelName']);
+    }*/
+    function currentListName(){
+        return (listNameStack[listNameStack.length -1]);
     }
     var liveReferences = {};
     //todo: view association for GC
@@ -130,11 +142,13 @@
             var id = dTool.uniqueID();
             var parts = options.path.split(':');
             var modelPath = parts[0];
-            var fieldPath = parts[1]; 
-            //console.log('???', modelPath);
+            var fieldPath = parts[1];
             var model = modelPath?Templates.model(modelPath):this;
-            if(!modelPath) Templates.modelName(this);
-            //console.log('SSS', model);
+            if(!modelPath){
+                var listName = currentListName();
+                var list = Templates.model(listName);
+                modelPath = listName+'.'+list.indexOf(model);
+            }
             liveReferences[id] = {
                 type : 'item',
                 modelName : modelPath,
@@ -171,15 +185,20 @@
                 return engine.block(list[i], data, options);
             }
             if(!corpse) output += '<!--<<<<+'+id+'>>>>-->';
+            listNameStack.push(options.selector);
+            listStack.push(list);
             for(var i=0; i<list.length; i++){
-                modelStack.push(list[i]);
+                //modelStack.push(list[i]);
                 output += makeItem(list[i], i, options);
-                modelStack.pop();
+                //modelStack.pop();
             }
+            listStack.pop();
+            listNameStack.pop();
             if(!corpse) output += '<!--<<<<-'+id+'>>>>-->';
             liveReferences[id] = {
                 type : 'list',
                 list : list,
+                listName : list,
                 name : options.selector,
                 makeNew : function(item){
                     return makeItem(item, list.length, options);
@@ -290,6 +309,7 @@
     Templates.closer = '>>>>'
     
     Templates.render = function render(view, data, callback, emitter){
+        console.log('<<<<<');
         engine.render(view, data, function(html){
             console.log('HTML', html);
             var dom = dTool.dom(html);
@@ -313,7 +333,7 @@
                     link.set(model.get(field));
                 }
             }, dom, function(){
-                console.log('$$2', dom.map(function(node){return (node.innerHTML || node.wholeText || node.data)}));
+                console.log('DOM', dom.map(function(node){return (node.innerHTML || node.wholeText || node.data)}));
                 callback(dom);
             });
         });
@@ -346,12 +366,13 @@
     //proxyEventsToDOM
     //enableModelFeedback
     
-    function field(root, path, value){
+    var field = function field(root, path, value){
         if(!Array.isArray(path)) return field(root, path.split('.'), value);
         if(path.length === 1){ //terminal
-            if(value) root[path.unshift()] = value;
-            else return root[path.unshift()];
-        }else return root[path.unshift()]?field(root[path.unshift()], path, value):undefined;
+            var fieldName = path.shift();
+            if(value) root[fieldName] = value;
+            else return root[fieldName];
+        }else return root[fieldName]?field(root[fieldName], path, value):undefined;
     }
     
     
@@ -370,12 +391,12 @@
             value['__modelName']+
             '\', please remove this entry before trying to register this model again.'
         );
-        if(value) value['__modelName'] = name;
-        return field(root, name, Templates.wrap(value));
+        //if(value) map.set(value, name);
+        //*
+        return field(root, name, value?Templates.wrap(value):value);
     };
     Templates.modelName = function(value){
-        if(!value) throw new Error('no model passed!');
-        return value['__modelName'];
+        //return map.get(value);
     };
     Templates.model.use = function(type){
         mode = type;
@@ -434,6 +455,10 @@
     Templates.component = function Component(options){
         
     };
+    
+    Templates.dump = function(){
+        console.log(root);
+    }
     
     return Templates;
 }));

@@ -1,0 +1,5 @@
+User:{{model "user:name.first"}}
+<br/>
+<ul data-surname="{{model "user:name.last"}}">{{#models "item_list"}}
+    <li>{{model ":name"}}:{{model ":value"}}</li>
+{{/models}}</ul>
