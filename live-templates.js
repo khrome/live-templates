@@ -18,7 +18,7 @@
         module.exports = factory(require('array-events'), require('object-events'), {ready:function(cb){
             if(!JQ) onready.push(cb);
             else JQ.ready(cb);
-        }}, require('Handlebars'), require('extended-emitter'), require('dom-tool'), require('hashmap'));
+        }}, require('Handlebars'), require('extended-emitter'), require('dom-tool'), require('hashmap').HashMap);
     }else{
         root.LiveTemplates = factory(
             root.EventedArray, root.EventedObject, root.$, root.Handlebars, 
