@@ -1,4 +1,4 @@
-require("chai").should();
+var should = require("chai").should();
 var Templates = require('../live-templates');
 var fs = require('fs');
 
@@ -22,6 +22,7 @@ Templates.component('widget', {
 
 Templates.loader = function(name, callback){
     fs.readFile('test/'+name+'.handlebars', function(err, response){
+        if(err) throw err;
         callback(response.toString());
     });
 };
@@ -29,10 +30,17 @@ Templates.use('handlebars');
 
 var tests = {};
 
-function existsAndEquals(selector, value, root){
-    var selector = $(selector, root);
-    return selector[0] && selector[0].innerHTML && selector[0].innerHTML.should.equal(value);
-}
+should.select = function(selector, root){
+    var selected = (
+        root.nodeType != 11 ?
+        Templates.domSelector(root).find(selector) :
+        Templates.domSelector(root.childNodes).find(selector).add(
+            Templates.domSelector(root.childNodes).filter(selector)
+        )
+    );
+    if(!selected[0]) throw new Error(selector+' returned nothing');
+    return selected[0];
+};
 
 describe('live-templates', function(){
     
@@ -48,35 +56,31 @@ describe('live-templates', function(){
             before(function(done){
                 Templates.domSelector.ready(function(selector){
                     Templates.domSelector = selector;
-                    $ = selector;
-                    $.all = function(selector, root){
-                        root = $(root || window.document.body);
-                        return root.filter(selector).add(root.find(selector));
-                    };
                     done();
                 });
             });
         
-            /*it('values in html bodies', function(complete){
-                Templates.render('main', {}, function(domNodes){
-                    Templates.dump();
-                    console.log('NODES', $.all('span[data-field-link="name.first"][data-model-link="user"]', domNodes));
-                    $.all('span[data-field-link="name.first"][data-model-link="user"]', domNodes).html().should.equal('Ed');
-                    complete();
-                });
-            });*/
-        
-            it('lists in html bodies', function(complete){
-                console.log('!!!');
+            it('values in html bodies', function(complete){
                 Templates.render('simple-test', {}, function(domNodes){
-                    console.log('--!!!');
-                    existsAndEquals('span[field-link="name"][data-model-link="item_list.0"]', 'Agnot', domNodes);
-                    existsAndEquals('span[field-link="value"][data-model-link="item_list.0"]', '14.8', domNodes);
-                    existsAndEquals('span[field-link="name"][data-model-link="item_list.1"]', 'Corbin', domNodes);
-                    existsAndEquals('span[field-link="value"][data-model-link="item_list.1"]', '21.2', domNodes);
+                    should.select('span[data-field-link="name.first"][data-model-link="user"]', domNodes)
+                        .innerHTML.should.equal('Ed');
                     complete();
                 });
             });
+            
+            it('lists in html bodies', function(complete){
+                Templates.render('simple-test', {}, function(domNodes){
+                    should.select('span[data-field-link="name"][data-model-link="item_list.0"]', domNodes)
+                        .innerHTML.should.equal('Agnot');
+                    should.select('span[data-field-link="value"][data-model-link="item_list.0"]', domNodes)
+                        .innerHTML.should.equal('14.8');
+                    should.select('span[data-field-link="name"][data-model-link="item_list.1"]', domNodes)
+                        .innerHTML.should.equal('Corbin');
+                    should.select('span[data-field-link="value"][data-model-link="item_list.1"]', domNodes)
+                        .innerHTML.should.equal('21.2');
+                    complete();
+                });
+            }); //*/
         
             /*it('values in html attributes', function(complete){
                 Templates.render('main', {}, function(domNodes){
@@ -84,6 +88,21 @@ describe('live-templates', function(){
                     complete();
                 });
             });*/
+    
+        });
+        
+        describe('updates live', tests.live = function(){
+        
+            it('values in html bodies', function(complete){
+                Templates.render('simple-test', {}, function(domNodes){
+                    should.select('span[data-field-link="name.first"][data-model-link="user"]', domNodes)
+                        .innerHTML.should.equal('Ed');
+                    Templates.model('user').set('name.first', 'Armand');
+                    should.select('span[data-field-link="name.first"][data-model-link="user"]', domNodes)
+                        .innerHTML.should.equal('Armand');
+                    complete();
+                });
+            });
     
         });
         

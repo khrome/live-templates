@@ -4,21 +4,29 @@
     }else if(typeof exports === 'object'){
         var jsdom = require('jsdom');
         var JQ;
+        var win;
         var onready = [];
         jsdom.env(
             '<html><head></head><body></body></html>',
             ["http://code.jquery.com/jquery.js"],
             function(errors, window){
                 JQ = window.$;
+                win = window;
                 if(onready.length) onready.forEach(function(cb){
                     cb(JQ);
                 })
             }
         );
+        var dTool = require('dom-tool');
+        onready.push(function($){
+            dTool.jQuery = $;
+            dTool.window = win;
+            if(dTool.setup) dTool.setup();
+        });
         module.exports = factory(require('array-events'), require('object-events'), {ready:function(cb){
             if(!JQ) onready.push(cb);
             else JQ.ready(cb);
-        }}, require('Handlebars'), require('extended-emitter'), require('dom-tool'), require('hashmap').HashMap);
+        }}, require('Handlebars'), require('extended-emitter'), dTool, require('hashmap').HashMap);
     }else{
         root.LiveTemplates = factory(
             root.EventedArray, root.EventedObject, root.$, root.Handlebars, 
@@ -28,12 +36,6 @@
 }(this, function(EventedArray, EventedObject, $, Handlebars, Emitter, dTool, HashMap){
     var mode = 'evented';
     var corpse = false;
-    $.ready(function(JQ){
-        dTool.dom = JQ.parseHTML;
-        dTool.fragment = JQ;
-        dTool.attach = modelAttach;
-    });
-    console.log(Object.keys(dTool), Object.keys($));
     var engine;
     
     var root = {}; //models
@@ -83,7 +85,7 @@
             var newHTML = engine.block(item, engine.context(listOptions[id].data || {}), listOptions[id]);
             var dom = dTool.live({
                 sentinel : new RegExp(escapeRegExp(Templates.opener)+'(.*)'+escapeRegExp(Templates.closer), 'g')
-            }, root, function(updaters){
+            }, root, function(updaters, dom){
                 Object.keys(updaters).forEach(function(id){
                     var updater = updaters[id];
                     var selector = updater.marker;
@@ -122,12 +124,6 @@
     //var modelStack = [];
     var listStack = [];
     var listNameStack = [];
-    /*function currentModelContext(){
-        return (modelStack[modelStack.length -1] && modelStack[modelStack.length -1]['__modelName']);
-    }
-    function currentListContext(){
-        return (listStack[listStack.length -1] && listStack[listStack.length -1]['__modelName']);
-    }*/
     function currentListName(){
         return (listNameStack[listNameStack.length -1]);
     }
@@ -159,7 +155,7 @@
             if(corpse){
                 return engine.literal(getModelValue(model, fieldPath));
             }else{
-                console.log('!!', modelPath, fieldPath);
+                //console.log('!!', modelPath, fieldPath);
                 return engine.literal('<!--<<<<'+id+'>>>>-->');
             }
         });
@@ -306,12 +302,10 @@
     
     Templates.opener = '<<<<';
     
-    Templates.closer = '>>>>'
+    Templates.closer = '>>>>';
     
     Templates.render = function render(view, data, callback, emitter){
-        console.log('<<<<<');
         engine.render(view, data, function(html){
-            console.log('HTML', html);
             var dom = dTool.dom(html);
             dTool.live({
                 emitter : emitter,
@@ -324,17 +318,16 @@
                     );
                     var model = link.model;
                     var field = link.fieldName;
-                    var $el = dTool.fragment(el);
-                    $el.attr('data-model-link', link.modelName);
-                    $el.attr('data-field-link', field);
-                    link.model.on('change', {field:field}, function(value, oldValue){
-                        link.set(value);
+                    el.setAttribute('data-model-link', link.modelName);
+                    el.setAttribute('data-field-link', field);
+                    link.model.on('change', {field:field}, function(event){
+                        link.set(event.value);
                     });
                     link.set(model.get(field));
                 }
-            }, dom, function(){
-                console.log('DOM', dom.map(function(node){return (node.innerHTML || node.wholeText || node.data)}));
-                callback(dom);
+            }, dom, function(domIndex, newDom){
+                //console.log('???', newDom.html());
+                callback(newDom);
             });
         });
         
