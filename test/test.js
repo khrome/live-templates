@@ -68,7 +68,7 @@ describe('live-templates', function(){
                 });
             });
             
-            it('lists in html bodies', function(complete){
+            it('list item html bodies', function(complete){
                 Templates.render('simple-test', {}, function(domNodes){
                     should.select('span[data-field-link="name"][data-model-link="item_list.0"]', domNodes)
                         .innerHTML.should.equal('Agnot');
@@ -82,12 +82,23 @@ describe('live-templates', function(){
                 });
             }); //*/
         
-            /*it('values in html attributes', function(complete){
-                Templates.render('main', {}, function(domNodes){
-                    $.all('ul', domNodes).attr('data-surname').should.equal('Beggler');
+            it('changes list item html attributes', function(complete){
+                Templates.render('simple-test', {}, function(domNodes){
+                    var firstItemAttr = Templates.domSelector(should.select(
+                        'span[data-field-link="name"][data-model-link="item_list.0"]', 
+                        domNodes
+                    )).parent().attr('data-info');
+                    firstItemAttr.should.contain('Whatnot');
+                    firstItemAttr.should.contain('Agnot');
+                    var secondItemAttr = Templates.domSelector(should.select(
+                        'span[data-field-link="name"][data-model-link="item_list.1"]', 
+                        domNodes
+                    )).parent().attr('data-info');
+                    secondItemAttr.should.contain('Dallas');
+                    secondItemAttr.should.contain('Corbin');
                     complete();
                 });
-            });*/
+            });
     
         });
         
@@ -100,6 +111,16 @@ describe('live-templates', function(){
                     Templates.model('user').set('name.first', 'Armand');
                     should.select('span[data-field-link="name.first"][data-model-link="user"]', domNodes)
                         .innerHTML.should.equal('Armand');
+                    Templates.model('user').set('name.first', 'Ed');
+                    complete();
+                });
+            });
+            
+            it('values in html attributes', function(complete){
+                Templates.render('simple-test', {}, function(domNodes){
+                    Templates.domSelector(should.select('ul', domNodes)).attr('data-surname').should.contain('Beggler');
+                    Templates.model('user').set('name.last', 'TheWind');
+                    Templates.domSelector(should.select('ul', domNodes)).attr('data-surname').should.contain('TheWind');
                     complete();
                 });
             });

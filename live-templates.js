@@ -1,6 +1,12 @@
 (function(root, factory){
     if (typeof define === 'function' && define.amd){
-        define(['array-events', 'object-events', 'jquery', 'Handlebars', 'extended-emitter', 'dom-tool', 'hashmap'], factory);
+        define(['array-events', 'object-events', 'jquery', 'handlebars', 'extended-emitter', 'dom-tool', 'hashmap'], 
+        function(a,b, $, c,d, dTool){
+            dTool.jQuery = $;
+            dTool.window = win;
+            if(dTool.setup) dTool.setup();
+            return factory.apply(factory, arguments);
+        });
     }else if(typeof exports === 'object'){
         var jsdom = require('jsdom');
         var JQ;
@@ -155,7 +161,6 @@
             if(corpse){
                 return engine.literal(getModelValue(model, fieldPath));
             }else{
-                //console.log('!!', modelPath, fieldPath);
                 return engine.literal('<!--<<<<'+id+'>>>>-->');
             }
         });
@@ -252,15 +257,24 @@
                             !EventedObject.is(object[0])
                         ){
                             object = object.map(function(item){
-                                return new EventedObject(item);
+                                var res = new EventedObject(item);
+                                res.setMaxListeners(500);
+                                return res;
                             });
                         }
                         return new EventedArray(object, function(item){
-                            return EventedObject.is(item)?item:new EventedObject(item);
+                            if( EventedObject.is(item)) return item;
+                            var res = new EventedObject(item);
+                            res.setMaxListeners(500);
+                            return res;
                         });
                     }else return object;
                 }else if(typeof object == 'object'){
-                    if(!EventedObject.is(object)) return new EventedObject(object);
+                    if(!EventedObject.is(object)){
+                        var res = new EventedObject(object);
+                        res.setMaxListeners(500);
+                        return res;
+                    }
                     else return object;
                 }
                 return object;
@@ -324,6 +338,17 @@
                         link.set(event.value);
                     });
                     link.set(model.get(field));
+                },
+                onAttribute : function(id, link, el){
+                    var model = link.model;
+                    var field = link.fieldName;
+                    el.setAttribute('data-model-link', link.modelName);
+                    el.setAttribute('data-field-link', field);
+                    //*
+                    link.model.on('change', {field:field}, function(event){
+                        link.set(event.value);
+                    });
+                    link.set(model.get(field));//*/
                 }
             }, dom, function(domIndex, newDom){
                 //console.log('???', newDom.html());
@@ -334,6 +359,7 @@
     };
     function LiveView(){
         this.emitter = new Emitter();
+        this.emitter.emitter.setMaxListeners(500);
     };
     LiveView.prototype.on = function(){ return this.emitter.on.apply(emitter, arguments); };
     LiveView.prototype.once = function(){ return this.emitter.once.apply(emitter, arguments); };
@@ -396,6 +422,7 @@
     };
     Templates.handlebarsAdapter = function handlebarsAdapter(Handlebars){
         var cache = {};
+        if(Handlebars.default) Handlebars = Handlebars.default; //yay, node & the browser come in differently :P
         var result = {
             macro : function(options, callback){
                 options = options || {};
