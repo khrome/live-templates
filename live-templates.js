@@ -148,8 +148,10 @@
             var model = modelPath?Templates.model(modelPath):this;
             if(!modelPath){
                 var listName = currentListName();
-                var list = Templates.model(listName);
-                modelPath = listName+'.'+list.indexOf(model);
+                //console.log('LN|'+(!!listName)+'|', Templates.modelName(model));
+                var list = listName?Templates.model(listName):Templates.containingList(model);
+                if(!listName) listName = Templates.modelName(list)
+                modelPath = listName+'.'+(list?list.indexOf(model):'*');
             }
             liveReferences[id] = {
                 type : 'item',
@@ -349,6 +351,15 @@
                         link.set(event.value);
                     });
                     link.set(model.get(field));//*/
+                },
+                onList : function(id, link, el){
+                    link.list.on('add', function(item, index){
+                        if(link.add) link.add(item);
+                    });
+                    link.list.on('remove', function(item, index){
+                        if(link.remove) link.remove(index);
+                        //todo: put garbage at the curb
+                    });
                 }
             }, dom, function(domIndex, newDom){
                 //console.log('???', newDom.html());
@@ -415,10 +426,28 @@
         return field(root, name, value?Templates.wrap(value):value);
     };
     Templates.modelName = function(value){
-        //return map.get(value);
+        var name;
+        Object.keys(root).forEach(function(modelName){
+            if(root[modelName] === value) name = modelName;
+        });
+        return name;
+    };
+    Templates.containingList = function(item){
+        var result;
+        Object.keys(root).forEach(function(modelName){
+            if(Templates.model.isList(root[modelName])){
+                if(root[modelName].indexOf(item) != -1){
+                    result = root[modelName];
+                }
+            }
+        });
+        return result;
     };
     Templates.model.use = function(type){
         mode = type;
+    };
+    Templates.model.isList = function(type){
+        return Array.isArray(type);
     };
     Templates.handlebarsAdapter = function handlebarsAdapter(Handlebars){
         var cache = {};
