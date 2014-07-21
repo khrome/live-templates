@@ -1,4 +1,4 @@
-live-templates.js (A Work in Progress)
+live-templates.js [Beta]
 =================
 
 By allowing templates to access many models on a namespace, you remove the need for any kind of boilerplate to bind a view to it's model allowing you to reduce MVVM or MVC to MV. In addition, because the models are directly attached to the templates, they can update themselves. It runs on the client or on the server under Node.js.
@@ -26,16 +26,16 @@ Configuration
 -------------
 Tell it what models you want to use:
 
-    //backbone models and collections
+    //backbone models and collections[Implementation in progress]
     Templates.model.use('backbone');
     
-    //backbone models with EventedArrays as collections
+    //backbone models with EventedArrays as collections[Implementation in progress]
     Templates.model.use('backbone-hybrid');
     
-    //backbone-deep-models with backbone collections
+    //backbone-deep-models with backbone collections[Implementation in progress]
     Templates.model.use('deep-backbone');
     
-    //backbone-deep-models with EventedArrays as collections
+    //backbone-deep-models with EventedArrays as collections[Implementation in progress]
     Templates.model.use('deep-hybrid');
     
     //EventedObjects models with EventedArrays as collections
@@ -90,7 +90,7 @@ which returns an object with a number of utility functions:
     view.activate();
     view.deactivate();
     
-Available events are:
+Available events are[Implementation in progress]:
 - *blur*
 - *focus*
 - *activate*
@@ -173,7 +173,7 @@ then let's create an instance of that view (assuming we have a 'strings' var and
     
 Now you can just concentrate on the models/data and stop screwing around in the DOM. (and there was much rejoicing)
 
-Components 
+Components[Implementation in progress]
 ----------
 Sometimes instead of binding to the DOM, you want to bind to a JS object to provide some kind of additional functionality... so there's a component system to help with that:
 
@@ -224,7 +224,7 @@ Sometimes instead of binding to the DOM, you want to bind to a JS object to prov
     
     if()
 
-Prescanners
+Prescanners[Implementation in progress]
 -----------
 You can also register a pre-scan function so that you can interact with the text templates before the binding and DOM conversion is done. if the function definition contains an argument, it will be passed an async callback which must be called to complete the scan
 

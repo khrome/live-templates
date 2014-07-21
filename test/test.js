@@ -62,24 +62,26 @@ describe('live-templates', function(){
                 });
         
                 it('values in html bodies', function(complete){
-                    Templates.render('simple-test', {}, function(domNodes){
+                    Templates.render('simple-test', {}, function(domNodes, kill){
                         liveNodeQuery(domNodes, 'user', 'name.first').innerHTML.should.equal('Ed');
+                        kill();
                         complete();
                     });
                 });
             
                 it('list item html bodies', function(complete){
-                    Templates.render('simple-test', {}, function(domNodes){
+                    Templates.render('simple-test', {}, function(domNodes, kill){
                         liveNodeQuery(domNodes, 'item_list.0', 'name').innerHTML.should.equal('Agnot');
                         liveNodeQuery(domNodes, 'item_list.0', 'value').innerHTML.should.equal('14.8');
                         liveNodeQuery(domNodes, 'item_list.1', 'name').innerHTML.should.equal('Corbin');
                         liveNodeQuery(domNodes, 'item_list.1', 'value').innerHTML.should.equal('21.2');
+                        kill();
                         complete();
                     });
                 }); //*/
         
                 it('changes list item html attributes', function(complete){
-                    Templates.render('simple-test', {}, function(domNodes){
+                    Templates.render('simple-test', {}, function(domNodes, kill){
                         var firstItemAttr = Templates.domSelector(
                             liveNodeQuery(domNodes, 'item_list.0', 'name')
                         ).parent().attr('data-info');
@@ -90,12 +92,13 @@ describe('live-templates', function(){
                         ).parent().attr('data-info');
                         secondItemAttr.should.contain('Dallas');
                         secondItemAttr.should.contain('Corbin');
+                        kill();
                         complete();
                     });
                 });
                 
                 it('list item html bodies in added data', function(complete){
-                    Templates.render('simple-test', {}, function(domNodes){
+                    Templates.render('simple-test', {}, function(domNodes, kill){
                         Templates.model('item_list').push({ 
                             name : 'Jean-Baptiste', 
                             subject : 'Zorg', 
@@ -103,6 +106,10 @@ describe('live-templates', function(){
                         });
                         liveNodeQuery(domNodes, 'item_list.2', 'name').innerHTML.should.equal('Jean-Baptiste');
                         liveNodeQuery(domNodes, 'item_list.2', 'value').innerHTML.should.equal('91.3');
+                        Templates.model('item_list').pop();
+                        should.not.exist(liveNodeQuery(domNodes, 'item_list.2', 'name'));
+                        should.not.exist(liveNodeQuery(domNodes, 'item_list.2', 'value'));
+                        kill();
                         complete();
                     });
                 });
@@ -112,21 +119,23 @@ describe('live-templates', function(){
             describe('updates live', tests.live = function(){
         
                 it('values in html bodies', function(complete){
-                    Templates.render('simple-test', {}, function(domNodes){
+                    Templates.render('simple-test', {}, function(domNodes, kill){
                         liveNodeQuery(domNodes, 'user', 'name.first').innerHTML.should.equal('Ed');
                         Templates.model('user').set('name.first', 'Armand');
                         liveNodeQuery(domNodes, 'user', 'name.first').innerHTML.should.equal('Armand');
                         Templates.model('user').set('name.first', 'Ed');
+                        kill()
                         complete();
                     });
                 });
             
                 it('values in html attributes', function(complete){
-                    Templates.render('simple-test', {}, function(domNodes){
+                    Templates.render('simple-test', {}, function(domNodes, kill){
                         Templates.domSelector(should.select('ul', domNodes)).attr('data-surname').should.contain('Beggler');
                         Templates.model('user').set('name.last', 'TheWind');
                         Templates.domSelector(should.select('ul', domNodes)).attr('data-surname').should.contain('TheWind');
                         Templates.model('user').set('name.last', 'Beggler');
+                        kill();
                         complete();
                     });
                 });
@@ -169,7 +178,7 @@ should.select = function(selector, root){
             Templates.domSelector(root.childNodes).filter(selector)
         )
     );
-    if(!selected[0]) throw new Error(selector+' returned nothing');
+    //if(!selected[0]) throw new Error(selector+' returned nothing');
     return selected[0];
 };
 

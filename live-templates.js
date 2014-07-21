@@ -1,6 +1,6 @@
 (function(root, factory){
     if (typeof define === 'function' && define.amd){
-        define(['array-events', 'object-events', 'jquery', 'handlebars', 'extended-emitter', 'dom-tool', 'hashmap'], 
+        define(['array-events', 'object-events', 'jquery', 'handlebars', 'extended-emitter', 'dom-tool'], 
         function(a,b, $, c,d, dTool){
             dTool.jQuery = $;
             dTool.window = win;
@@ -32,14 +32,14 @@
         module.exports = factory(require('array-events'), require('object-events'), {ready:function(cb){
             if(!JQ) onready.push(cb);
             else JQ.ready(cb);
-        }}, require('Handlebars'), require('extended-emitter'), dTool, require('hashmap').HashMap);
+        }}, require('Handlebars'), require('extended-emitter'), dTool);
     }else{
         root.LiveTemplates = factory(
             root.EventedArray, root.EventedObject, root.$, root.Handlebars, 
             root.ExtendedEmitter, root.DOMTool, root.HashMap
         );
     }
-}(this, function(EventedArray, EventedObject, $, Handlebars, Emitter, dTool, HashMap){
+}(this, function(EventedArray, EventedObject, $, Handlebars, Emitter, dTool){
     var mode = 'evented';
     var corpse = false;
     var engine;
@@ -123,7 +123,6 @@
                 break;
         }
     }
-    var map = new HashMap();
     var listOptions = {};
     var Templates = {};
     Templates.domSelector = $;
@@ -148,7 +147,6 @@
             var model = modelPath?Templates.model(modelPath):this;
             if(!modelPath){
                 var listName = currentListName();
-                //console.log('LN|'+(!!listName)+'|', Templates.modelName(model));
                 var list = listName?Templates.model(listName):Templates.containingList(model);
                 if(!listName) listName = Templates.modelName(list)
                 modelPath = listName+'.'+(list?list.indexOf(model):'*');
@@ -178,22 +176,21 @@
             if(!Array.isArray(list)) return '<!-- MODEL LIST NOT FOUND -->';
             var output = '';
             function makeItem(item, index, options){
+                var item_id = dTool.uniqueID();
                 var data = {};
                 if(options.data){
                     data = engine.context(options.data || {});
                     data.index = i;
                     data.item = item;
                 }
-                if(!corpse) output += '<!--<<<<='+id+'>>>>-->';
-                return engine.block(list[i], data, options);
+                return '<!--<<<<='+id+':'+item_id+'>>>>-->'+"\n"+
+                    engine.block(list[i], data, options);
             }
             if(!corpse) output += '<!--<<<<+'+id+'>>>>-->';
             listNameStack.push(options.selector);
             listStack.push(list);
             for(var i=0; i<list.length; i++){
-                //modelStack.push(list[i]);
                 output += makeItem(list[i], i, options);
-                //modelStack.pop();
             }
             listStack.pop();
             listNameStack.pop();
@@ -201,38 +198,12 @@
             liveReferences[id] = {
                 type : 'list',
                 list : list,
-                listName : list,
                 name : options.selector,
                 makeNew : function(item){
                     return makeItem(item, list.length, options);
                 },
                 id : id
             };
-            /*var root = function(){
-                //todo: index blocks on create, so they don't have to be in the DOM
-                return this.root || (this.root = findComment(document, Templates.opener+id+Templates.closer).parentNode);
-            };
-            list.on('add', function(item, index){
-                item.namekey = options.selector+'.'+(list.length-1);
-                var newHTML = engine.block(item, engine.context(options.data || {}), options);
-                var dom = Templates.domSelector.parseHTML(newHTML);
-                convertMarkersToLiveHTML(dom);
-                var replaceableAttrs = scanAttributesFor('<!--', dom);
-                replaceableAttrs.forEach(function(replaceable){
-                    createLiveAttribute(replaceable.field, replaceable.node);
-                });
-                insertAt(root(), dom, index);
-            });
-            list.on('move', function(item, index){
-                
-            });
-            list.on('remove', function(item, index){
-                var rt = root();
-                var els = findBlockNumber(rt, index);
-                els.forEach(function(el){
-                    rt.removeChild(el);
-                });
-            });*/
             return output;
         });
     };
@@ -321,6 +292,7 @@
     Templates.closer = '>>>>';
     
     Templates.render = function render(view, data, callback, emitter){
+        var gcItems = [];
         engine.render(view, data, function(html){
             var dom = dTool.dom(html);
             dTool.live({
@@ -353,17 +325,29 @@
                     link.set(model.get(field));//*/
                 },
                 onList : function(id, link, el){
-                    link.list.on('add', function(item, index){
-                        if(link.add) link.add(item);
-                    });
-                    link.list.on('remove', function(item, index){
-                        if(link.remove) link.remove(index);
-                        //todo: put garbage at the curb
+                    var on = true;
+                    function add(item, index){
+                        if(on && link.add) link.add(item);
+                    }
+                    function remove(item, index){
+                        if(on && link.remove) link.remove(index);
+                    }
+                    link.list.on('add', add);
+                    link.list.on('remove', remove);
+                    gcItems.push(function(){
+                        on = false; // 'kill' :P FIX ME!
+                        link.list.off('add', add);
+                        link.list.off('remove', remove); 
                     });
                 }
             }, dom, function(domIndex, newDom){
                 //console.log('???', newDom.html());
-                callback(newDom);
+                newDom.creationStack = (new Error()).stack;
+                callback(newDom, function Kill(){
+                    gcItems.forEach(function(gcAction){
+                        gcAction();
+                    })
+                });
             });
         });
         
