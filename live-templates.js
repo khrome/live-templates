@@ -354,13 +354,14 @@
     };
     function LiveView(){
         this.emitter = new Emitter();
-        this.emitter.emitter.setMaxListeners(500);
+        if(this.emitter.emitter && this.emitter.emitter.setMaxListeners) 
+            this.emitter.emitter.setMaxListeners(500);
     };
-    LiveView.prototype.on = function(){ return this.emitter.on.apply(emitter, arguments); };
-    LiveView.prototype.once = function(){ return this.emitter.once.apply(emitter, arguments); };
-    LiveView.prototype.off = function(){ return this.emitter.off.apply(emitter, arguments); };
-    LiveView.prototype.emit = function(){ return this.emitter.emit.apply(emitter, arguments); };
-    LiveView.prototype.when = function(){ return this.emitter.when.apply(emitter, arguments); };
+    LiveView.prototype.on = function(){ return this.emitter.on.apply(this.emitter, arguments); };
+    LiveView.prototype.once = function(){ return this.emitter.once.apply(this.emitter, arguments); };
+    LiveView.prototype.off = function(){ return this.emitter.off.apply(this.emitter, arguments); };
+    LiveView.prototype.emit = function(){ return this.emitter.emit.apply(this.emitter, arguments); };
+    LiveView.prototype.when = function(){ return this.emitter.when.apply(this.emitter, arguments); };
     LiveView.prototype.activate = function(){
         this.emitter.emit('activate');
         
@@ -377,6 +378,13 @@
         this.emitter.emit('blur');
         
     };
+    LiveView.prototype.set = function(name, value){
+        if(typeof name == 'object') return Object.keys(name).forEach(function(key){
+            
+        });
+        //todo: determine if this value is referenced in the template
+        
+    };
     //proxyEventsToDOM
     //enableModelFeedback
     
@@ -389,13 +397,31 @@
         }else return root[fieldName]?field(root[fieldName], path, value):undefined;
     }
     
-    
     Templates.createView = function createView(view, data, el){
         var v = new LiveView();
         Templates.render(view, data || {}, function(dom){
             v.elements = dom;
             if(el) el.appendChild(dom);
         }, v.emitter);
+        return v;
+    };
+    Templates.createComponent = function createComponent(name, data, el){
+        var options = {};
+        var v = new LiveView();
+        if(typeof name == 'object'){
+            options = name;
+            name = options.name;
+        }
+        require([name], function(Component){
+            if(!Component){
+                throw new Error('Component \''+name+'\' was not found, perhaps it was not imported.');
+            }
+            var instance = Component.createComponent?Component.createComponent(el, options):new Component(el, options);
+            v.component = instance;
+            v.set(data); //not a great model, improve me
+            v.emit('ready');
+            //todo: handle live data bindings
+        });
         return v;
     };
     Templates.model = function model(name, value){

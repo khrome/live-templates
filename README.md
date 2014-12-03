@@ -1,4 +1,4 @@
-live-templates.js [Beta]
+live-templates.js
 =================
 
 By allowing templates to access many models on a namespace, you remove the need for any kind of boilerplate to bind a view to it's model allowing you to reduce MVVM or MVC to MV. In addition, because the models are directly attached to the templates, they can update themselves. It runs on the client or on the server under Node.js.
@@ -173,68 +173,19 @@ then let's create an instance of that view (assuming we have a 'strings' var and
     
 Now you can just concentrate on the models/data and stop screwing around in the DOM. (and there was much rejoicing)
 
-Components[Implementation in progress]
-----------
-Sometimes instead of binding to the DOM, you want to bind to a JS object to provide some kind of additional functionality... so there's a component system to help with that:
+Upcoming Features
+-----------------
 
-    Templates.component({
-        create : function(options){
-            //return the component;
-        },
-        // if not defined, attempts to call component.set(name, value) 
-        //  or component.val(value) or component.set<Name>(value)
-        //  or component.setValue(value)
-        //changes: [{name: 'fieldname', value: 43754, model: [Object]}, ...]
-        update : function(component, changes){
-        
-        },
-        notify : function(changes){ // or function(model, name, value)
-        
-        },
-        // if not defined, tests if component has destroy or gc, 
-        //  if not it traverses and de-links component
-        destroy : function(component){
-            
-        },
-        show : function(component){ //if not defined, checks component or will alias activate
-            
-        },
-        hide : function(component){ //if not defined, checks component or will alias deactivate
-            
-        },
-        activate : function(component){ //if not defined, checks component or will alias show
-            
-        },
-        deactivate : function(component){ //if not defined, checks component or will alias hide
-            
-        },
-        //if not defined, tests if component has focus, if not null op
-        focus : function(component){
-            
-        },
-        //if not defined, tests if component has blur, if not null op
-        blur : function(component){
-            
-        },
-        //if not defined, automatically created and responds to ':visible', ':focus', and ':active'
-        is : function(component, state){
-            
-        }
-    });
-    
-    if()
+1. **Components** : Sometimes instead of binding to the DOM, you want to bind to a JS object to provide some kind of additional functionality. This allows you to create such a binding on your component, but not require it.
+2. **Prescanners** : You can also register a pre-scan function so that you can interact with the text templates before the binding and DOM conversion is done. if the function definition contains an argument, it will be passed an async callback which must be called to complete the scan
 
-Prescanners[Implementation in progress]
------------
-You can also register a pre-scan function so that you can interact with the text templates before the binding and DOM conversion is done. if the function definition contains an argument, it will be passed an async callback which must be called to complete the scan
-
-    Templates.scanner(function(){
-        //return the results of the scan
-    });
-    
-    Templates.scanner(function(done){
-        //call done(results) to return the results of the scan and continue processing
-    });
+	    Templates.scanner(function(){
+	        //return the results of the scan
+	    });
+	    
+	    Templates.scanner(function(done){
+	        //call done(results) to return the results of the scan and continue processing
+	    });
 
 Contributing
 ------------
@@ -245,6 +196,11 @@ Testing
 just run
     
     mocha
+
+Disclaimer
+----------
+
+This is not an official Google product.
 
 Enjoy,
 
