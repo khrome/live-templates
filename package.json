@@ -3,7 +3,7 @@
     "homepage": "https://github.com/khrome/live-templates",
     "version": "0.1.0",
     "main": "live-templates.js",
-    "description": "Bind your templates directly to models, and get lives updates for free with no boilerplate.",
+    "description": "Bind your templates directly to models, and get live updates for free with no boilerplate.",
     "keywords": [
         "templates",
         "model",
