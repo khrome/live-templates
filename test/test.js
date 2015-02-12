@@ -1,158 +1,292 @@
 var should = require("chai").should();
-var Templates = require('../live-templates');
+var Live = require('../live-templates');
 var fs = require('fs');
+var jsdom = require('jsdom');
+global._ = require('underscore');
+var arrays = require('async-arrays');
 
-var user =  {
-    name : { 
-        first : 'Ed', 
-        last : 'Beggler' 
-    }
-};
-var item_list = [
-    { 
-        name : 'Agnot', 
-        subject : 'Whatnot', 
-        value : 14.8 
-    },{ 
-        name : 'Corbin', 
-        subject : 'Dallas', 
-        value : 21.2 
-    }
-];
+var data = JSON.parse(fs.readFileSync('test/test-data.json').toString());
+var shallowData = JSON.parse(fs.readFileSync('test/test-data-shallow.json').toString());
 
-Templates.component('widget', {
-    create : function(){},
-    update : function(){},
-    destroy : function(){},
-    activate : function(){},
-    deactivate : function(){}
-});
+var userModel;
+var itemListModel;
+var addOne;
+var addTwo;
+var changeValues;
 
 var tests = {};
 
+//model libraries:
+var Backbone = require('backbone-deep-model');
+var EventedArray = require('array-events');
+var EventedObject = require('object-events');
+
+var hardExit = function(){
+    console.log.apply(console, arguments);
+    process.exit();
+}
+
 describe('live-templates', function(){
 
-    describe('and handlebars', function(){
+    describe('with handlebars templates', function(){
         
         before(function(done){
-            Templates.loader = function(name, callback){
-                fs.readFile('test/'+name+'.handlebars', function(err, response){
-                    if(err) throw err;
-                    callback(response.toString());
-                });
-            };
-            Templates.use('handlebars');
-            done();
+            //setup the browser context we're going to attach to
+            jsdom.env(
+                '<html><head></head><body></body></html>',
+                ["http://code.jquery.com/jquery.js"],
+                function(errors, window){
+                    Live.bondTarget = function(){
+                        return window;
+                    };
+                    //rootContext = window;
+                    global.HTMLCollection = window.HTMLCollection;
+                    global.NodeList = window.NodeList;
+                    done();
+                }
+            );
         });
-    
-        describe('uses EventedArray and EventedObject and', tests.evented = function(){
-            before(function(){
-                Templates.model.use('evented');
-                Templates.model('user', user);
-                Templates.model('item_list', item_list);
+        
+        describe('uses Backbone to', function(){
+            before(function(done){
+                Live.models('backbone');
+                Live.views('handlebars');
+                userModel = new Backbone.Model(shallowData.user);
+                itemListModel = new Backbone.Collection([], {
+                      model: userModel
+                });
+                shallowData.user_list.forEach(function(item){
+                    itemListModel.add(new Backbone.Model(item));
+                });
+                Live.model('user', userModel);
+                Live.model('item_list', itemListModel);
+                addOne = new Backbone.Model(data.extra_users[0]);
+                addTwo = new Backbone.Model(data.extra_users[1]);
+                changeValues = function(){
+                    data.extra_names.forEach(function(name, index){
+                        Live.model('item_list').at(index).set('name', name);
+                    });
+                };
+                done();
             });
     
-            describe('renders live', tests.render = function(){
-    
-                before(function(done){
-                    Templates.domSelector.ready(function(selector){
-                        Templates.domSelector = selector;
-                        done();
-                    });
-                });
-        
-                it('values in html bodies', function(complete){
-                    Templates.render('simple-test', {}, function(domNodes, kill){
-                        liveNodeQuery(domNodes, 'user', 'name.first').innerHTML.should.equal('Ed');
-                        kill();
-                        complete();
-                    });
-                });
-            
-                it('list item html bodies', function(complete){
-                    Templates.render('simple-test', {}, function(domNodes, kill){
-                        liveNodeQuery(domNodes, 'item_list.0', 'name').innerHTML.should.equal('Agnot');
-                        liveNodeQuery(domNodes, 'item_list.0', 'value').innerHTML.should.equal('14.8');
-                        liveNodeQuery(domNodes, 'item_list.1', 'name').innerHTML.should.equal('Corbin');
-                        liveNodeQuery(domNodes, 'item_list.1', 'value').innerHTML.should.equal('21.2');
-                        kill();
-                        complete();
-                    });
-                }); //*/
-        
-                it('changes list item html attributes', function(complete){
-                    Templates.render('simple-test', {}, function(domNodes, kill){
-                        var firstItemAttr = Templates.domSelector(
-                            liveNodeQuery(domNodes, 'item_list.0', 'name')
-                        ).parent().attr('data-info');
-                        firstItemAttr.should.contain('Whatnot');
-                        firstItemAttr.should.contain('Agnot');
-                        var secondItemAttr = Templates.domSelector(
-                            liveNodeQuery(domNodes, 'item_list.1', 'name')
-                        ).parent().attr('data-info');
-                        secondItemAttr.should.contain('Dallas');
-                        secondItemAttr.should.contain('Corbin');
-                        kill();
-                        complete();
+            describe('render live data', tests.live = function(){
+                it('as atomic values', tests.atomic = function(complete){
+                    var template = new Live.Template({
+                        template:'test/simple-test.handlebars',
+                        complete : function(){
+                            Live.value(template.dom[0]).should.equal('User:');
+                            Live.value(template.dom[1]).should.equal('[user:name.first]');
+                            Live.value(template.dom[2]).should.equal("Ed");
+                            Live.value(template.dom[3]).should.equal("\n");
+                            template.dom[4].nodeName.should.equal('BR');
+                            Live.value(template.dom[5]).should.equal("\n");
+                            template.destroy();
+                            complete();
+                        }
                     });
                 });
                 
-                it('list item html bodies in added data', function(complete){
-                    Templates.render('simple-test', {}, function(domNodes, kill){
-                        Templates.model('item_list').push({ 
-                            name : 'Jean-Baptiste', 
-                            subject : 'Zorg', 
-                            value : 91.3 
-                        });
-                        liveNodeQuery(domNodes, 'item_list.2', 'name').innerHTML.should.equal('Jean-Baptiste');
-                        liveNodeQuery(domNodes, 'item_list.2', 'value').innerHTML.should.equal('91.3');
-                        Templates.model('item_list').pop();
-                        should.not.exist(liveNodeQuery(domNodes, 'item_list.2', 'name'));
-                        should.not.exist(liveNodeQuery(domNodes, 'item_list.2', 'value'));
-                        kill();
-                        complete();
+                it('as atomic values with updates', tests.atomic_updates = function(complete){
+                    var template = new Live.Template({
+                        template:'test/simple-test.handlebars',
+                        complete : function(){
+                            Live.model('user').set('name.first', 'Bob');
+                            Live.value(template.dom[2]).should.equal("Bob");
+                            Live.model('user').set('name.first', 'Ed');
+                            Live.value(template.dom[2]).should.not.equal("Bob");
+                            template.destroy();
+                            complete();
+                        }
                     });
                 });
-    
+                
+                //*
+                it('as a list of arbitrary HTML', tests.html_list = function(complete){
+                    var template = new Live.Template({
+                        template:'test/simple-test.handlebars',
+                        complete : function(){
+                            var lis = template.select('li');
+                            lis.length.should.equal(2);
+                            var domSelectedValues = [];
+                            lis.forEach(function(item, index){
+                                domSelectedValues.push(item.textContent);
+                            });
+                            var dataGeneratedValues = [];
+                            Live.model('item_list').forEach(function(item){
+                                dataGeneratedValues.push(item.get('name')+':'+item.get('value'));
+                            });
+                            domSelectedValues.length.should.equal(2);
+                            dataGeneratedValues.length.should.equal(2);
+                            dataGeneratedValues.forEach(function(item){
+                                arrays.erase(domSelectedValues, item);
+                            });
+                            domSelectedValues.length.should.equal(0);
+                            template.destroy();
+                            complete();
+                        }
+                    });
+                });
+                
+                it('as a list of arbitrary HTML with async member additions', tests.html_list_async = function(complete){
+                    var template = new Live.Template({
+                        template:'test/simple-test.handlebars',
+                        complete : function(error, tracer){
+                            Live.model('item_list').push(addOne);
+                            Live.model('item_list').push(addTwo);
+                            setTimeout(function(){ //wait for the nodes to hit the DOM
+                                var lis = template.select('li');
+                                lis.length.should.equal(Live.model('item_list').length);
+                                var domSelectedValues = [];
+                                lis.forEach(function(item, index){
+                                    domSelectedValues.push(item.textContent);
+                                });
+                                var dataGeneratedValues = [];
+                                Live.model('item_list').forEach(function(item){
+                                    dataGeneratedValues.push(item.get('name')+':'+item.get('value'));
+                                });
+                                domSelectedValues.length.should.equal(4);
+                                dataGeneratedValues.length.should.equal(4);
+                                dataGeneratedValues.forEach(function(item){
+                                    arrays.erase(domSelectedValues, item);
+                                });
+                                domSelectedValues.length.should.equal(0);
+                                template.destroy();
+                                complete();
+                            }, 100);
+                        }
+                    });
+                });
+                
+                it('as a list of arbitrary HTML with member value updates', tests.html_list = function(complete){
+                    var template = new Live.Template({
+                        template:'test/simple-test.handlebars',
+                        complete : function(){
+                            changeValues();
+                            var lis = template.select('li');
+                            lis.length.should.equal(4);
+                            var domSelectedValues = [];
+                            lis.forEach(function(item, index){
+                                domSelectedValues.push(item.textContent);
+                            });
+                            var dataGeneratedValues = [];
+                            Live.model('item_list').forEach(function(item){
+                                dataGeneratedValues.push(item.get('name')+':'+item.get('value'));
+                            });
+                            domSelectedValues.length.should.equal(4);
+                            dataGeneratedValues.length.should.equal(4);
+                            domSelectedValues.forEach(function(item){
+                                arrays.erase(dataGeneratedValues, item);
+                            });
+                            dataGeneratedValues.length.should.equal(0);
+                            domSelectedValues[0].split(':').shift().should.equal('Armand');
+                            domSelectedValues[1].split(':').shift().should.equal('Edmund');
+                            domSelectedValues[2].split(':').shift().should.equal('Harlan');
+                            domSelectedValues[3].split(':').shift().should.equal('Lemmy');
+                            template.destroy();
+                            complete();
+                        }
+                    });
+                });
+                //*/
             });
-        
-            describe('updates live', tests.live = function(){
-        
-                it('values in html bodies', function(complete){
-                    Templates.render('simple-test', {}, function(domNodes, kill){
-                        liveNodeQuery(domNodes, 'user', 'name.first').innerHTML.should.equal('Ed');
-                        Templates.model('user').set('name.first', 'Armand');
-                        liveNodeQuery(domNodes, 'user', 'name.first').innerHTML.should.equal('Armand');
-                        Templates.model('user').set('name.first', 'Ed');
-                        kill()
-                        complete();
-                    });
-                });
-            
-                it('values in html attributes', function(complete){
-                    Templates.render('simple-test', {}, function(domNodes, kill){
-                        Templates.domSelector(should.select('ul', domNodes)).attr('data-surname').should.contain('Beggler');
-                        Templates.model('user').set('name.last', 'TheWind');
-                        Templates.domSelector(should.select('ul', domNodes)).attr('data-surname').should.contain('TheWind');
-                        Templates.model('user').set('name.last', 'Beggler');
-                        kill();
-                        complete();
-                    });
-                });
-    
-            });
-        
         });
         
-        //describe('uses EventedArray and Backbone DeepModel and');
+        describe('uses EventedArray and Backbone to', function(){
+            before(function(done){
+                Live.models('backbone-hybrid');
+                Live.views('handlebars');
+                userModel = new Backbone.Model(shallowData.user);
+                itemListModel = new EventedArray(data.user_list.map(function(item){ 
+                    return new Backbone.Model(item);
+                }));
+                Live.model('user', userModel);
+                Live.model('item_list', itemListModel);
+                addOne = new Backbone.Model(data.extra_users[0]);
+                addTwo = new Backbone.Model(data.extra_users[1]);
+                changeValues = function(){
+                    data.extra_names.forEach(function(name, index){
+                        Live.model('item_list')[index].set('name', name);
+                    });
+                };
+                done();
+            });
+    
+            describe('render live data', tests.live);
+        });
         
-        //describe('uses EventedArray and Backbone and');
+        describe('uses BackboneDeepModel to', function(){
+            
+            before(function(done){
+                Live.models('backbone-deep');
+                Live.views('handlebars');
+                userModel = new Backbone.DeepModel(data.user);
+                itemListModel = new Backbone.Collection([], {
+                      model: userModel
+                });
+                data.user_list.forEach(function(item){
+                    itemListModel.add(new Backbone.DeepModel(item));
+                });
+                Live.model('user', userModel);
+                Live.model('item_list', itemListModel);
+                addOne = new Backbone.DeepModel(data.extra_users[0]);
+                addTwo = new Backbone.DeepModel(data.extra_users[1]);
+                changeValues = function(){
+                    data.extra_names.forEach(function(name, index){
+                        Live.model('item_list').at(index).set('name', name);
+                    });
+                };
+                done();
+            });
+    
+            describe('render live data', tests.live);
+        });
         
-        //describe('uses Backbone DeepModel and');
+        describe('uses EventedArray and EventedObject to', function(){
+            before(function(done){
+                Live.models('evented');
+                Live.views('handlebars');
+                userModel = new EventedObject(data.user);
+                itemListModel = new EventedArray(data.user_list.map(function(item){
+                    return new EventedObject(item);
+                }));
+                Live.model('user', userModel);
+                Live.model('item_list', itemListModel);
+                addOne = new EventedObject(data.extra_users[0]);
+                addTwo = new EventedObject(data.extra_users[1]);
+                changeValues = function(){
+                    data.extra_names.forEach(function(name, index){
+                        Live.model('item_list')[index].set('name', name);
+                    });
+                };
+                done();
+            });
+    
+            describe('render live data', tests.live);
+        });
         
-        //describe('uses Backbone and');
-        
-        
+        describe('uses EventedArray and BackboneDeepModel to', function(){
+            before(function(done){
+                Live.models('backbone-deep-hybrid');
+                Live.views('handlebars');
+                userModel = new Backbone.DeepModel(data.user);
+                itemListModel = new EventedArray(data.user_list.map(function(item){ 
+                    return new Backbone.DeepModel(item);
+                }));
+                Live.model('user', userModel);
+                Live.model('item_list', itemListModel);
+                addOne = new Backbone.DeepModel(data.extra_users[0]);
+                addTwo = new Backbone.DeepModel(data.extra_users[1]);
+                changeValues = function(){
+                    data.extra_names.forEach(function(name, index){
+                        Live.model('item_list')[index].set('name', name);
+                    });
+                };
+                done();
+            });
+    
+            describe('render live data', tests.live);
+        });
     
     });
     

@@ -1,523 +1,637 @@
 (function(root, factory){
     if (typeof define === 'function' && define.amd){
-        define(['array-events', 'object-events', 'jquery', 'handlebars', 'extended-emitter', 'dom-tool'], 
-        function(a,b, $, c,d, dTool){
-            dTool.jQuery = $;
-            dTool.window = win;
-            if(dTool.setup) dTool.setup();
-            return factory.apply(factory, arguments);
-        });
+        define(['array-events', 'object-events', 'handlebars', 'extended-emitter', 'dom-tool', 'async-arrays', 'dirname-shim'], 
+        factory);
     }else if(typeof exports === 'object'){
-        var jsdom = require('jsdom');
-        var JQ;
-        var win;
-        var onready = [];
-        jsdom.env(
-            '<html><head></head><body></body></html>',
-            ["http://code.jquery.com/jquery.js"],
-            function(errors, window){
-                JQ = window.$;
-                win = window;
-                if(onready.length) onready.forEach(function(cb){
-                    cb(JQ);
-                })
-            }
-        );
-        var dTool = require('dom-tool');
-        onready.push(function($){
-            dTool.jQuery = $;
-            dTool.window = win;
-            if(dTool.setup) dTool.setup();
-        });
-        module.exports = factory(require('array-events'), require('object-events'), {ready:function(cb){
-            if(!JQ) onready.push(cb);
-            else JQ.ready(cb);
-        }}, require('Handlebars'), require('extended-emitter'), dTool);
+        module.exports = factory(require('array-events'), require('object-events'), require('Handlebars'), require('extended-emitter'), require('dom-tool'), require('async-arrays'));
     }else{
         root.LiveTemplates = factory(
-            root.EventedArray, root.EventedObject, root.$, root.Handlebars, 
-            root.ExtendedEmitter, root.DOMTool, root.HashMap
+            root.EventedArray, root.EventedObject, root.Handlebars, 
+            root.ExtendedEmitter, root.DOMTool, root.AsyncArrays
         );
     }
-}(this, function(EventedArray, EventedObject, $, Handlebars, Emitter, dTool){
-    var mode = 'evented';
-    var corpse = false;
-    var engine;
+}(this, function(EventedArray, EventedObject, Handlebars, Emitter, Dom, arrays){ //Emitter, domTool, request + optional: Handlebars, Backbone
     
-    var root = {}; //models
-    var listOptions = {}; //the options used in rendering a list, stored by list id
-    
-    //Modes, currently hardcoded, will eventually move to their own, loadable modules
-    
-    function getModelValue(model, field){
-        switch(mode){
-            case 'backbone' :
-            
-            case 'deep-backbone' :
-            case 'evented' :
-            case 'backbone-hybrid' :
-            case 'deep-hybrid' :
-                return model.get(field);
-                break;
+    var clone = function(out) {
+        out = out || {};
+        for (var i = 1; i < arguments.length; i++) {
+            if (!arguments[i]) continue;
+            for (var key in arguments[i]) {
+                if (arguments[i].hasOwnProperty(key))
+                out[key] = arguments[i][key];
+            }
         }
-    }
+        return out;
+    };
     
-    function modelAttach(model, field, update){
-        switch(mode){
-            case 'backbone' :
-            case 'deep-backbone' :
-            case 'backbone-hybrid' :
-            case 'deep-hybrid' :
-                model.on('change:'+field, function(value){
-                    update(value);
-                });
-                break;
-            case 'evented' :
-                model.on('change', field, function(value){
-                    update(value);
-                });
-                break;
-        }
-    }
+    escapeRegEx = function(string) {
+      return string.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')
+    };
     
-    function escapeRegExp(str){
-        return str.replace(/[\-\[\]\/\{\}\(\)\*\+\?\.\\\^\$\|]/g, "\\$&");
-    }
-    
-    function listAttach(list, id, root){
-        var sentinel = Templates.opener+':ITEM:'+Templates.closer;
-        var add = function(item){
-            var position = list.indexOf(item);
-            var newHTML = engine.block(item, engine.context(listOptions[id].data || {}), listOptions[id]);
-            var dom = dTool.live({
-                sentinel : new RegExp(escapeRegExp(Templates.opener)+'(.*)'+escapeRegExp(Templates.closer), 'g')
-            }, root, function(updaters, dom){
-                Object.keys(updaters).forEach(function(id){
-                    var updater = updaters[id];
-                    var selector = updater.marker;
-                    var parts = selector.split(':');
-                    var model = Template.model(parts.shift());
-                    var field = parts.shift();
-                    modelAttach(model, field, updater.set);
-                })
+    var Live = {};
+    var rqst;
+    var fs;
+    Live.defaultTemplateLoader = function(name, callback){
+        //if not absolute, prepend the current dir
+        var url = (name.indexOf('://') != -1 || name[0] == '/')?name:__dirname + '/' + name;
+        if(url[0] == '/' && (typeof exports === 'object')){ //in node, use the filesystem
+            (rqst || (rqst = require('fs'))).readFile(url, function(err, data){
+                if(data.toString) data = data.toString();
+                callback(err, data);
             });
-            
-        };
-        
-        var remove = function(item, previousPosition){
-            tool.removeBlockAt(sentinel, root);
-        };
-        
-        switch(mode){
-            case 'backbone' :
-            case 'deep-backbone' :
-                list.on('add', add);
-                list.on('remove', remove);
-                break;
-            case 'evented' :
-            case 'backbone-hybrid' :
-            case 'deep-hybrid' :
-                list.on('add', add);
-                list.on('remove', remove);
-                //list.on('move', function(item, previousPosition){ });
-                break;
+        }else{
+            //remote
+            (rqst || (rqst = require((typeof exports === 'object')?'request':'browser-request')))({
+                uri : url
+            }, function(err, req, data){
+                if(data.toString) data = data.toString();
+                callback(err, data);
+            });
+        }
+    };
+    Live.bondTarget = function(name, callback){
+        return (typeof exports === 'object')?global.window:window; //naively assume we're in the browser or attached to global
+    };
+    Live.relativeTemplateRoot = function(){}; //todo: default this based on environment
+    Live.defaultTemplates = function(loader){ //handlebars implementation
+        throw new Error('please assign an adapter to \'Live.defaultTemplates\'');
+    };
+    
+    Live.defaultModel = function(model){ //backbone implementation
+        throw new Error('please assign an adapter to \'Live.defaultModel\'');
+    };
+    
+    //todo: optimize recusive pattern to inline
+    var setData = function(store, field, value){
+        if(!Array.isArray(field)){
+            return setData(store, field.split('.'), value)
+        }else{
+            if(field.length == 1){
+                return store[field.shift()] = value;
+            }else{
+                var subfield = field.shift();
+                return setData(store[subfield], field, value)
+            }
+        }
+    };
+    var getData = function(store, field){
+        if(!field) throw new Error('cannot fetch an empty key!');
+        if(!Array.isArray(field)){
+            return getData(store, field.split('.'))
+        }else{
+            if(field.length == 0){
+                return store;
+            }else{
+                var subfield = field.shift();
+                return getData(store[subfield], field)
+            }
+        }
+    };
+    var getDataComponent = function(store, field){
+        if(!Array.isArray(field)){
+            return getDataComponent(store, field.split('.'))
+        }else{
+            if(field.length <= 1){
+                return store;
+            }else{
+                var subfield = field.shift();
+                return getDataComponent(store[subfield], field)
+            }
+        }
+    };
+    
+    Live.data = {}; //namespace
+    Object.defineProperty(Live, 'namespace', {
+        get : function(){
+            return Live.data;
+        },
+        set : function(value){
+            Live.data = value;
+        }
+    });
+    Object.defineProperty(Live, 'environment', {
+        get : function(){
+            return Live.data;
+        },
+        set : function(value){
+            Live.data = value;
+        }
+    });
+    Live.model = function(selector, data){
+        if(Live.automap && Live.defaultModel.automap && !Live.defaultModel.is(data)){
+            var isList = Array.isArray(data);
+            data = Live.defaultModel.automap(data); //turn a POJSO into a model object
+        }
+        if(arguments.length > 1){
+            return setData(Live.data, selector, data);
+        }else{
+            return getData(Live.data, selector);
         }
     }
-    var listOptions = {};
-    var Templates = {};
-    Templates.domSelector = $;
-    //var modelStack = [];
-    var listStack = [];
-    var listNameStack = [];
-    function currentListName(){
-        return (listNameStack[listNameStack.length -1]);
-    }
-    var liveReferences = {};
-    //todo: view association for GC
-    Templates.engine = function(eng){
-        if(!eng) return engine;
-        engine = eng;
-        engine.macro('model', function(options){
+    
+    Live.defaultOpen  = '[';
+    Live.defaultClose = ']';
+    
+    Live.Template = function(options){
+        if(typeof options == 'string') options = {template:options};
+        this.options = options || {};
+        this.id = Math.floor(Math.random()*100000)+''; //todo: better ids
+        if(!this.options.opener) this.options.opener = Live.defaultOpen;
+        if(!this.options.closer) this.options.closer = Live.defaultClose;
+        if(!options.template) throw new Error('live-templates requires, you know... a template');
+        this.loader = options.loader || Live.defaultTemplateLoader;
+        this.templates = options.templates || Live.defaultTemplates(this.loader);
+        this.events = options.emitter || new Emitter();
+        var ob  = this;
+        if(options.on){
+            Object.keys(options.on).forEach(function(event){
+                ob.events.on(event, options.on[event]);
+            });
+        }
+        this.domRoot = options.element || options.root;
+        this.tool = new Dom.Tool();
+        this.browserRoot = this.options.globalRoot || Live.bondTarget();
+        this.document = this.browserRoot.document;
+        this.tool.bond(this.browserRoot)
+        this.data = Live.data;
+        this.nextListId = 1;
+        this.listHandlers = {};
+        this.listObjects = {};
+        this.liveObjects = [];
+        this.modelWrap = Live.defaultModel;
+        Object.defineProperty(this, 'namespace', {
+            get : function(){
+                return ob.data;
+            },
+            set : function(value){
+                ob.data = value;
+            }
+        });
+        Object.defineProperty(this, 'environment', {
+            get : function(){
+                return ob.data;
+            },
+            set : function(value){
+                ob.data = value;
+            }
+        });
+        
+        /* SETUP FIRST PASS TEXTUAL OUTPUT */
+        //register macros with this LiveTemplate's textual template dependency
+        this.templates.macro('model', function(options){
             if(options.args && options.args[0] && !options.path) options.path = options.args[0];
             if(options.args && options.args[1] && !options.storeInto) options.storeInto = options.args[1];
-            var id = dTool.uniqueID();
-            var parts = options.path.split(':');
-            var modelPath = parts[0];
-            var fieldPath = parts[1];
-            var model = modelPath?Templates.model(modelPath):this;
-            if(!modelPath){
-                var listName = currentListName();
-                var list = listName?Templates.model(listName):Templates.containingList(model);
-                if(!listName) listName = Templates.modelName(list)
-                modelPath = listName+'.'+(list?list.indexOf(model):'*');
-            }
-            liveReferences[id] = {
-                type : 'item',
-                modelName : modelPath,
-                fieldName : fieldPath,
-                model : model
-            };
-            
-            if(corpse){
-                return engine.literal(getModelValue(model, fieldPath));
+            if(ob.options.corpse){ //static render
+                return ob.templates.literal(getModelValue(model, fieldPath));
             }else{
-                return engine.literal('<!--<<<<'+id+'>>>>-->');
+                return ob.templates.literal('<!--'+ob.options.opener+options.path+ob.options.closer+'-->');
             }
         });
         
-        engine.macro({
+        var openerRE = escapeRegEx(ob.options.opener);
+        var closerRE = escapeRegEx(ob.options.closer);
+        
+        this.templates.macro({
             name : 'models',
             type : 'block'
-        }, function(options){
-            var id = dTool.uniqueID();
-            listOptions[id] = options;
+        }, function(options, subrender){
             if(options.args && options.args[0] && !options.selector) options.selector = options.args[0];
-            var list = Templates.model(options.selector);
-            if(!Array.isArray(list)) return '<!-- MODEL LIST NOT FOUND -->';
-            var output = '';
-            function makeItem(item, index, options){
-                var item_id = dTool.uniqueID();
-                var data = {};
-                if(options.data){
-                    data = engine.context(options.data || {});
-                    data.index = i;
-                    data.item = item;
-                }
-                return '<!--<<<<='+id+':'+item_id+'>>>>-->'+"\n"+
-                    engine.block(list[i], data, options);
-            }
-            if(!corpse) output += '<!--<<<<+'+id+'>>>>-->';
-            listNameStack.push(options.selector);
-            listStack.push(list);
-            for(var i=0; i<list.length; i++){
-                output += makeItem(list[i], i, options);
-            }
-            listStack.pop();
-            listNameStack.pop();
-            if(!corpse) output += '<!--<<<<-'+id+'>>>>-->';
-            liveReferences[id] = {
-                type : 'list',
-                list : list,
-                name : options.selector,
-                makeNew : function(item){
-                    return makeItem(item, list.length, options);
-                },
-                id : id
+            var list = Live.model(options.selector);
+            if(!Live.defaultModel.isList(list)) return '<!-- MODEL LIST NOT FOUND -->';
+            var id = ob.id+'.'+(ob.nextListId++);
+            ob.listHandlers[id] = function makeItem(item, environment){ //todo: remove indexing
+                return (item?'<!--<<<<='+options.selector+':'+ob.id+'>>>>-->'+"\n":'')+
+                    subrender(item || {}, ob.templates.context(environment));
             };
+            var output = '<!--'+ob.options.opener+'+'+options.selector+':'+id+ob.options.closer+'-->';
+            if(ob.options.corpse){
+                for(var i=0; i<list.length; i++){
+                    output += makeItem(list[i], i, options);
+                }
+            }else{
+                output += ob.listHandlers[id](undefined, {}); //output, no values
+            }
+            output += '<!--'+ob.options.opener+'-'+options.selector+':'+id+ob.options.closer+'-->';
             return output;
         });
-    };
-    Templates.loader = function(name, callback){
-        
-    };
-    var dynamicImports = {};
-    function rqr(modules, callback){
-        if(!Array.isArray(modules)) modules = [modules];
-        //var results = 
-        return dynamicImports[module]?
-            dynamicImports[module]:
-            ( dynamicImports[module] = require(module) );
-    }
-    Templates.wrap = function(object){
-        if(!object) return;
-        switch(mode){
-            case 'evented': //EventedArray + EventedObject
-                if(Array.isArray(object)){
-                    if(!EventedArray.is(object)){
-                        if(
-                            object.length && 
-                            typeof object[0] == 'object' && 
-                            !EventedObject.is(object[0])
-                        ){
-                            object = object.map(function(item){
-                                var res = new EventedObject(item);
-                                res.setMaxListeners(500);
-                                return res;
-                            });
-                        }
-                        return new EventedArray(object, function(item){
-                            if( EventedObject.is(item)) return item;
-                            var res = new EventedObject(item);
-                            res.setMaxListeners(500);
-                            return res;
-                        });
-                    }else return object;
-                }else if(typeof object == 'object'){
-                    if(!EventedObject.is(object)){
-                        var res = new EventedObject(object);
-                        res.setMaxListeners(500);
-                        return res;
-                    }
-                    else return object;
-                }
-                return object;
-                break;
-            case 'backbone': //Backbone Collection + Backbone Model
-                if(Array.isArray(object)){
-                    if(!EventedArray.is(object)){
-                        if(
-                            object.length && 
-                            typeof object[0] == 'object' && 
-                            !EventedObject.is(object[0])
-                        ){
-                            object = object.map(function(item){
-                                return new EventedObject(item);
-                            });
-                        }
-                        return new EventedArray(object, function(item){
-                            return EventedObject.is(item)?item:new EventedObject(item);
-                        });
-                    }else return object;
-                }else if(typeof object == 'object'){
-                    if(!EventedObject.is(object)) return new EventedObject(object);
-                    else return object;
-                }
-                return object;
-                break;
-            case 'hybrid': //Backbone Collection + Backbone Model
-                throw new Error('not yet supported');
-                break;
-            case 'deep-backbone': //Backbone Collection + Backbone DeepModel
-                throw new Error('not yet supported');
-                break;
-            case 'deep-hybrid': //Backbone Collection + Backbone Model
-                throw new Error('not yet supported');
-                break;
-            default : throw new Error('unknown object mode');
+        /* SETUP SECOND PASS DOM PARSE & LIVE ELEMENT INJECTION */
+        //setup DOM scanner for 2nd pass parse
+        var scanStack = [];
+        function current(id){
+            return scanStack[scanStack.length-1];
         }
+        var setups = 0;
+        var queue = [];
+        var last = {};
+        this.ready = function(handler){
+            if(setups == 0){
+                flush();
+                handler();
+            }else{
+                queue.push(handler);
+            }
+        }
+        var scanning;
+        var flush = function(){
+            stopScanning();
+            var jobs = queue;
+            queue = [];
+            scanning = false;
+            if(jobs.length) jobs.forEach(function(handler){
+                handler();
+            })
+        }
+        var stopScanning = function(){
+            clearInterval(ref);
+        }
+        var ref;
+        var scannerStarted;
+        var intervalScanner = function(){
+            if(!scanning) stopScanning();
+            var now = Date.now();
+            Object.keys(last).forEach(function(key){
+                if(last[key] && (now - last[key]) > 4000){
+                    scanning = false;
+                    throw new Error('DOM Scanner stalled at '+(now - last[key])+' waiting for '+key+' ');
+                }
+            });
+            if((now - scannerStarted) > 4000){
+                scanning = false;
+                throw new Error('DOM Scanner stalled wating on '+setups+' jobs to complete to execute '+queue.length+' handlers');
+            }
+        };
+        var setupStepStarted = function(name){
+            if(name) last[name] = Date.now();
+            if(!scanning){
+                scannerStarted = Date.now();
+                scanning = true;
+                ref = setInterval(intervalScanner, 10);
+            }
+            setups++;
+            Live.log(name+' started at '+last[name], setups);
+        };
+        var setupStepStopped = function(name){
+            if(name) delete last[name];
+            setups--;
+            Live.log(name+' stopped at '+Date.now(), setups);
+            if(setups == 0){
+                flush();
+            }
+        };
+        this.startJob = setupStepStarted;
+        this.stopJob = setupStepStopped;
+        this.tool.lookFor({
+            nodeType : 'comment',
+            regex : RegExp(openerRE+'.*?'+closerRE, 'g'),
+        }, function(node, options, complete, tracer){
+            var text = node.innerHTML || node.textContent || node.nodeValue;
+            var id = text.substring(ob.options.opener.length, text.length - ob.options.closer.length);
+            var type = (['+', '-', '='].indexOf(id[0])!=-1)?id[0]:'*';
+            if(type == id[0]) id = id.substring(1);
+            switch(type){
+                case '+' :
+                    setupStepStarted('open-list');
+                    var parts = id.split(':');
+                    var object = getData(ob.data, parts[0]);
+                    var field = parts[1];
+                    ob.listObjects[parts[0]] = object;
+                    scanStack.push({
+                        node : node,
+                        context : object
+                    });
+                    setupStepStopped('open-list');
+                    complete();
+                    break;
+                case '-' :
+                    //ensure balance?
+                    var open = scanStack.pop();
+                    setupStepStarted('close-list');
+                    var object = ob.modelWrap(open.context);
+                    if(!object.isList()) throw new Error('cannot treat an object as a list');
+                    var monitor = new Live.List({
+                        list: object, 
+                        open : open.node, 
+                        close : node,
+                        tool: ob.tool,
+                        template : ob
+                    }, function(){
+                        setupStepStopped('close-list');
+                        complete();
+                    });
+                    ob.liveObjects.push(monitor);
+                    break;
+                case '*':
+                    var parts = id.split(':');
+                    var objectID = parts[0];
+                    var field = parts[1];
+                    var object = current();
+                    if(object){
+                        object = current.context;
+                    }else{
+                        if(objectID === ''){
+                            object = options.current;
+                        }else{
+                            if(typeof objectID == 'string'){
+                                object = getData(ob.data, objectID);
+                            }
+                        }
+                    }
+                    if(!object) return complete(); //short circuit
+                    if(!object) new Error('could not find object:'+object, scanStack);
+                    object = ob.modelWrap(object);
+                    if(object.isList() && object.raw.length === 0) return complete(); //GTFO, this is an empty list
+                    if(object.isList()) throw new Error('attempting to render a list as an item');
+                    setupStepStarted('value');
+                    var monitor = new Live.Data({
+                        object: object,
+                        field : field,
+                        marker : node,
+                        tool: ob.tool,
+                        template : ob
+                    }, function(){
+                        setupStepStopped('value');
+                        complete();
+                    });
+                    ob.liveObjects.push(monitor);
+                    break;
+                default : throw new Error('Unknown type: '+type);
+            }
+        });
+        //*
+        this.tool.lookFor({
+            nodeType : 'attribute',
+            regex : RegExp('<!--'+openerRE+'.*?'+closerRE+'-->', 'g'),
+        }, function(node, options){
+            //replace from the back so remainder does not shift
+            (node.value||node.nodeValue).match(RegExp('<!--'+openerRE+'.*?'+closerRE+'-->', 'g')).reverse().forEach(function(str){
+                var reference = str.substring(4+(openerRE.length-1), str.length-(3+closerRE.length-1));
+                var parts = reference.split(':');
+                var object = parts[0];
+                var field = parts[1];
+                node.originalValue = (node.value || node.nodeValue);
+                if(object){
+                    object = getData(ob.data, object);
+                    var value = object.get(field);
+                    var start = value.lastIndexOf(str);
+                    node.nodeValue = node.nodeValue.substring(0, start)+value+node.nodeValue.substring(start+1+str.length);
+                }else{
+                    if(object === '' && options.current){
+                        object = options.current;
+                        var value = object.get(field) || ''; //empty string to prevent undefined references
+                        var start = value.lastIndexOf(str);
+                        if(node.value){
+                            node.value = node.value.substring(0, start)+value+node.value.substring(start+1+str.length);
+                        }else{
+                            node.nodeValue = node.nodeValue.substring(0, start)+value+node.nodeValue.substring(start+1+str.length);
+                        }
+                    }
+                }
+            });
+        });//*/
+        
+        
+        /* DO TEXT RENDER + LIVE RENDER */
+        var done = function(error, tracer){
+            var args = arguments;
+            ob.ready(function(){ //because async stuff may be happening to the tree
+                if(options.onLoad) options.onLoad.apply(options.onLoad, args);
+                if(options.complete) options.complete.apply(options.complete, args);
+            });
+        }
+        //this.tracer = new Dom.Tool.Tracer();
+        setupStepStarted('render');
+        this.templates.render(this.options.template, this.data, function(err, html){
+            if(err) return done(err);
+            ob.text = html;
+            if(options.onRender) options.onRender();
+            if(!ob.options.corpse){
+                var els = ob.tool.html(html);
+                ob.tool.transform(els, {
+                    attributes : true
+                }, function(error, tracer){
+                    setupStepStopped('render');
+                    ob.dom = els;
+                    done(undefined, tracer);
+                }, ob.tracer);
+            }else{
+                //todo: staticly append to root;
+                console.log('corpse');
+                done(undefined, tracer, html);
+            }
+        }, this.tracer);
+    };
+    Live.Template.prototype.on = function(){
+        return this.events.on.apply(this.events, arguments);
+    };
+    Live.Template.prototype.off = function(){
+        return this.events.off.apply(this.events, arguments);
+    };
+    Live.Template.prototype.once = function(){
+        return this.events.once.apply(this.events, arguments);
+    };
+    Live.Template.prototype.emit = function(){
+        return this.events.emit.apply(this.events, arguments);
+    };
+    
+    Live.Template.prototype.select = function(selector){
+        return this.tool.select(selector, this.dom);
+    };
+    
+    //UI state handling
+    Live.Template.prototype.show = function(){
+        
+    };
+    Live.Template.prototype.hide = function(){
+        
+    };
+    Live.Template.prototype.focus = function(){
+        
+    };
+    Live.Template.prototype.blur = function(){
+        
+    };
+    
+    //data handling
+    Live.Template.prototype.model = function(){
+        return Live.model(Live, arguments);
+    };
+    Live.Template.prototype.dt = function(){
+        return this.modelWrap(Live.model(Live, arguments))
+    };
+    
+    Live.Template.prototype.destroy = function(){
+        this.events.emitter.removeAllListeners();
+        this.liveObjects.forEach(function(live){
+            live.destroy();
+        })
+    };
+    
+    
+    Live.Data = function(options, callback){
+        var object = options.object;
+        if(options.template) this.template = options.template;
+        if(!object.isWrapped) throw new Error('attempting to LIVE an unwrapped object');
+        if(object.isList()) throw new Error('ILLEGAL: added list as a item');
+        var fieldName = options.field || options.fieldName;
+        var markerElement = options.marker || options.markerElement;
+        var tool = options.tool || options.domTool || Dom;
+        var container = tool.text('', markerElement.ownerDocument);
+        this.setValue = function(newValue){
+            container.nodeValue = newValue || '';
+        };
+        this.field = fieldName;
+        this.object = object;
+        if(markerElement.nextSibling){
+            markerElement.parentNode.insertBefore(container, markerElement.nextSibling);
+        }else{
+            markerElement.parentNode.appendChild(container);
+        }
+        markerElement.reference = container;
+        var ob = this;
+        object.on('change', fieldName, this.setValue);
+        object.once('destroy', function(){
+            //todo: check namespace to see if we reassigned something (overwrite with new model)
+            object.off('change', fieldName, ob.setValue);
+        });
+        if(markerElement) markerElement.addEventListener('DOMNodeRemovedFromDocument', function(){
+            //todo: internal log
+            ob.destroy();
+        });
+        this.setValue(object.get(fieldName));
+        callback();
+    };
+    Live.Data.prototype.destroy = function(){
+        //todo: kaboom... delink it all
+        this.object.off('change', this.field, this.setValue);
     }
     
-    Templates.opener = '<<<<';
-    
-    Templates.closer = '>>>>';
-    
-    Templates.render = function render(view, data, callback, emitter){
-        var gcItems = [];
-        engine.render(view, data, function(html){
-            var dom = dTool.dom(html);
-            dTool.live({
-                emitter : emitter,
-                registry : liveReferences,
-                sentinel : [Templates.opener, Templates.closer],
-                onValue : function(id, link, el){
-                    var marker = link.marker.substring(
-                        Templates.opener.length,
-                        link.marker.length - Templates.closer.length
-                    );
-                    var model = link.model;
-                    var field = link.fieldName;
-                    el.setAttribute('data-model-link', link.modelName);
-                    el.setAttribute('data-field-link', field);
-                    link.model.on('change', {field:field}, function(event){
-                        link.set(event.value);
-                    });
-                    link.set(model.get(field));
-                },
-                onAttribute : function(id, link, el){
-                    var model = link.model;
-                    var field = link.fieldName;
-                    el.setAttribute('data-model-link', link.modelName);
-                    el.setAttribute('data-field-link', field);
-                    //*
-                    link.model.on('change', {field:field}, function(event){
-                        link.set(event.value);
-                    });
-                    link.set(model.get(field));//*/
-                },
-                onList : function(id, link, el){
-                    var on = true;
-                    function add(item, index){
-                        if(on && link.add) link.add(item);
-                    }
-                    function remove(item, index){
-                        if(on && link.remove) link.remove(index);
-                    }
-                    link.list.on('add', add);
-                    link.list.on('remove', remove);
-                    gcItems.push(function(){
-                        on = false; // 'kill' :P FIX ME!
-                        link.list.off('add', add);
-                        link.list.off('remove', remove); 
-                    });
-                }
-            }, dom, function(domIndex, newDom){
-                //console.log('???', newDom.html());
-                newDom.creationStack = (new Error()).stack;
-                callback(newDom, function Kill(){
-                    gcItems.forEach(function(gcAction){
-                        gcAction();
-                    })
-                });
-            });
+    Live.List = function(options, callback){
+        var list = options.list;
+        this.list = list;
+        if(!list.isWrapped) throw new Error('attempting to LIVE an unwrapped list');
+        var openMarker = options.open || options.openMarker;
+        var closeMarker = options.close || options.closeMarker;
+        var tool = options.tool || options.domTool || Dom;
+        var itemElements = Dom.between(openMarker, closeMarker);
+        if(options.template) this.template = options.template;
+        var parent = openMarker.parentNode;
+        var ob = this;
+        //remove the dummy els from the DOM
+        itemElements.forEach(function(node){
+            parent.removeChild(node);
         });
-        
-    };
-    function LiveView(){
         this.emitter = new Emitter();
-        if(this.emitter.emitter && this.emitter.emitter.setMaxListeners) 
-            this.emitter.emitter.setMaxListeners(500);
-    };
-    LiveView.prototype.on = function(){ return this.emitter.on.apply(this.emitter, arguments); };
-    LiveView.prototype.once = function(){ return this.emitter.once.apply(this.emitter, arguments); };
-    LiveView.prototype.off = function(){ return this.emitter.off.apply(this.emitter, arguments); };
-    LiveView.prototype.emit = function(){ return this.emitter.emit.apply(this.emitter, arguments); };
-    LiveView.prototype.when = function(){ return this.emitter.when.apply(this.emitter, arguments); };
-    LiveView.prototype.activate = function(){
-        this.emitter.emit('activate');
-        
-    };
-    LiveView.prototype.deactivate = function(){
-        this.emitter.emit('deactivate');
-        
-    };
-    LiveView.prototype.focus = function(){
-        this.emitter.emit('focus');
-        
-    };
-    LiveView.prototype.blur = function(){
-        this.emitter.emit('blur');
-        
-    };
-    LiveView.prototype.set = function(name, value){
-        if(typeof name == 'object') return Object.keys(name).forEach(function(key){
+        function generateItemNodes(item, index, complete){
+            if(options.template) options.template.startJob('subrender');
+            var elCopies = Array.prototype.slice.apply(itemElements).map(function(node){
+                return node.cloneNode(true);
+            });
+            var theItem = item;
+            tool.transform(elCopies, {
+                attributes : true, 
+                current : item
+            }, function(error, tracer){
+                if(options.template) options.template.stopJob('subrender');
+                elCopies.forEach(function(node, index){
+                    openMarker.parentNode.insertBefore(node, closeMarker);
+                    //todo: handle ordered insertion
+                });
+                ob.template.emit('new-list-item', elCopies, theItem);
+                complete();
+            }, options.template.tracer?options.template.tracer.subtrace():undefined);
+        }
+        list.on('remove', function(){
             
         });
-        //todo: determine if this value is referenced in the template
-        
+        arrays.forEachEmission(list.raw, function(item, index, done){
+            generateItemNodes(item, index, done);
+        }, callback);
+        this.addFN = function(item){
+            ob.template.startJob('generate-nodes');
+            if(Live.automap && Live.defaultModel.automap && !Live.defaultModel.is(item)){
+                item = Live.defaultModel.automap(item);
+            }
+            generateItemNodes(item, undefined, function(){
+                ob.template.stopJob('generate-nodes');
+            });
+        };
+        list.on('add', this.addFN);
     };
-    //proxyEventsToDOM
-    //enableModelFeedback
-    
-    var field = function field(root, path, value){
-        if(!Array.isArray(path)) return field(root, path.split('.'), value);
-        if(path.length === 1){ //terminal
-            var fieldName = path.shift();
-            if(value) root[fieldName] = value;
-            else return root[fieldName];
-        }else return root[fieldName]?field(root[fieldName], path, value):undefined;
+    Live.List.prototype.destroy = function(){
+        //todo: kaboom... delink it all
+        this.list.off('change', this.field, this.addFN);
     }
     
-    Templates.createView = function createView(view, data, el){
-        var v = new LiveView();
-        Templates.render(view, data || {}, function(dom){
-            v.elements = dom;
-            if(el) el.appendChild(dom);
-        }, v.emitter);
-        return v;
-    };
-    Templates.createComponent = function createComponent(name, data, el){
-        var options = {};
-        var v = new LiveView();
-        if(typeof name == 'object'){
-            options = name;
-            name = options.name;
-        }
+    var stacks = {};
+    Live.uniqueStacks = function(id){
+        if(!id) return stacks;
+        if(!stacks[id]) stacks[id] = [];
+        var stack = (new Error()).stack.split("\n");
+        var error = stack.shift();
+        stack.shift(); //this call context
+        stack.shift(); //parent call context (call *to* this FN);
+        var stack = stack.join("\n");
+        if(stacks[id].indexOf(stack) !== -1) stacks[id].push(stack);
+    }
+    
+    Live.Component = function(options){
+        Live.Templates.apply(this, arguments);
+        var ob = this;
         require([name], function(Component){
             if(!Component){
                 throw new Error('Component \''+name+'\' was not found, perhaps it was not imported.');
             }
             var instance = Component.createComponent?Component.createComponent(el, options):new Component(el, options);
-            v.component = instance;
+            ob.component = instance;
             v.set(data); //not a great model, improve me
+            (options.fields || []).forEach(function(fieldName){
+                
+            });
             v.emit('ready');
+            if(options.onLoad) options.onLoad(instance);
             //todo: handle live data bindings
         });
         return v;
     };
-    Templates.model = function model(name, value){
-        if(!name) return undefined;
-        if(value && value['__modelName']) throw new Error(
-            'Model is already registered as \''+
-            value['__modelName']+
-            '\', please remove this entry before trying to register this model again.'
-        );
-        //if(value) map.set(value, name);
-        //*
-        return field(root, name, value?Templates.wrap(value):value);
-    };
-    Templates.modelName = function(value){
-        var name;
-        Object.keys(root).forEach(function(modelName){
-            if(root[modelName] === value) name = modelName;
-        });
-        return name;
-    };
-    Templates.containingList = function(item){
-        var result;
-        Object.keys(root).forEach(function(modelName){
-            if(Templates.model.isList(root[modelName])){
-                if(root[modelName].indexOf(item) != -1){
-                    result = root[modelName];
-                }
-            }
-        });
-        return result;
-    };
-    Templates.model.use = function(type){
-        mode = type;
-    };
-    Templates.model.isList = function(type){
-        return Array.isArray(type);
-    };
-    Templates.handlebarsAdapter = function handlebarsAdapter(Handlebars){
-        var cache = {};
-        if(Handlebars.default) Handlebars = Handlebars.default; //yay, node & the browser come in differently :P
-        var result = {
-            macro : function(options, callback){
-                options = options || {};
-                if(typeof options == 'string') options = { name : options };
-                Handlebars.registerHelper(options.name, function(){
-                    var args = Array.prototype.slice.call(arguments);
-                    var opts = (typeof args[args.length-1] == 'object'?args.pop():{});
-                    opts.args = args;
-                    return callback.apply(this, [opts]);
-                });
-            },
-            render : function render(template, data, callback){
-                if(cache[template]){
-                    callback(cache[template](data));
-                }else{
-                    Templates.loader(template, function(body){
-                        cache[template] = Handlebars.compile(body);
-                        render(template, data, callback);
-                    })
-                }
-            },
-            literal : function(str){
-                return new Handlebars.SafeString(str);
-            },
-            block : function(context, data, options){
-                return options.fn(context, { data: data });
-            },
-            context : function(data){
-                return Handlebars.createFrame(data);
-            }
-        };
-        return result;
-    };
-    Templates.smartyAdapter = function smartyAdapter(Smarty){
-        
-    };
-    Templates.mustacheAdapter = function mustacheAdapter(Mustache){
-        //concept: use lambdas to make macros available
-    };
     
-    Templates.use = function(type){
-        switch(type.toLowerCase()){
-            case 'handlebars':
-                Templates.engine(Templates.handlebarsAdapter(Handlebars));
-                break;
-            default : throw('Unknown template type: '+type);
-        }
-    };
+    //dupe Live.Template's prototype
+    Live.Component.prototype = clone(Live.Template.prototype);
+    Live.Component.prototype.constructor = Live.Component;
     
-    Templates.component = function Component(options){
-        
-    };
-    
-    Templates.dump = function(){
-        console.log(root);
+    function nodeValue(node){
+        return node.innerHTML || node.nodeValue || node.textContent;
     }
     
-    return Templates;
+    function nodeMarkup(node){
+        return node.outerHTML || node.data /* JSDOM BUG */ || node.textContent || node.nodeValue;
+    }
+    
+    Live.html = function html(nodeList){
+        return Array.prototype.slice.apply(nodeList).map(function(node){
+            return nodeMarkup(node);
+        }).join('');
+    }
+    
+    Live.value = nodeValue;
+    
+    Live.log = function(str){  };
+    
+    Live.models = function(type){
+        if(typeof type === 'string'){
+            if(type.indexOf('/') === -1){
+                Live.defaultModel = require(__dirname+'/adapters/models/'+type);
+            }else throw new Error('unrecognized model type');
+        }else Live.defaultModel = type;
+    }
+    
+    Live.views = function(type){
+        if(typeof type === 'string'){
+            if(type.indexOf('/') === -1){
+                Live.defaultTemplates = require(__dirname+'/adapters/views/'+type);
+            }else throw new Error('unrecognized model type');
+        }else Live.defaultTemplates = type;
+    }
+    
+    return Live;
+    
 }));

@@ -1,0 +1,37 @@
+{
+    "user" : {
+        "name" : { 
+            "first" : "Ed", 
+            "last" : "Beggler" 
+        }
+    },
+    "user_list" : [
+        { 
+            "name" : "Agnot", 
+            "subject" : "Whatnot", 
+            "value" : 14.8 
+        },{ 
+            "name" : "Corbin", 
+            "subject" : "Dallas", 
+            "value" : 21.2 
+        }
+    ],
+    "extra_users":[
+        {
+            "name" : "Buckaroo", 
+            "subject" : "Banzai", 
+            "value" : 293.2 
+        },
+        {
+            "name" : "Jack", 
+            "subject" : "Burton", 
+            "value" : 293.2 
+        }
+    ],
+    "extra_names":[
+        "Armand",
+        "Edmund",
+        "Harlan",
+        "Lemmy"
+    ]
+}

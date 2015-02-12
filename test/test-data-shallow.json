@@ -1,0 +1,17 @@
+{
+    "user" : {
+        "name.first" : "Ed", 
+        "name.last" : "Beggler" 
+    },
+    "user_list" : [
+        { 
+            "name" : "Agnot", 
+            "subject" : "Whatnot", 
+            "value" : 14.8 
+        },{ 
+            "name" : "Corbin", 
+            "subject" : "Dallas", 
+            "value" : 21.2 
+        }
+    ]
+}
