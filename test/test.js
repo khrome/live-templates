@@ -62,6 +62,7 @@ describe('live-templates', function(){
                 Live.model('item_list', itemListModel);
                 addOne = new Backbone.Model(data.extra_users[0]);
                 addTwo = new Backbone.Model(data.extra_users[1]);
+                addThree = new Backbone.Model(data.extra_users[2]);
                 changeValues = function(){
                     data.extra_names.forEach(function(name, index){
                         Live.model('item_list').at(index).set('name', name);
@@ -188,10 +189,58 @@ describe('live-templates', function(){
                         }
                     });
                 });
+                
+                it('as a list of arbitrary HTML with out of order insertions', tests.html_list = function(complete){
+                    var template = new Live.Template({
+                        template:'test/simple-test.handlebars',
+                        complete : function(){
+                            Live.model('item_list').unshift(addThree);
+                            setTimeout(function(){ //wait for the nodes to hit the DOM
+                                var lis = template.select('li');
+                                var domSelectedValues = [];
+                                lis.forEach(function(item, index){
+                                    domSelectedValues.push(item.textContent);
+                                });
+                                var dataGeneratedValues = [];
+                                Live.model('item_list').forEach(function(item){
+                                    dataGeneratedValues.push(item.get('name')+':'+item.get('value'));
+                                });
+                                dataGeneratedValues.forEach(function(item, index){
+                                    domSelectedValues[index].should.equal(item)
+                                });
+                                //console.log('!!!', dataGeneratedValues, domSelectedValues);
+                                complete();
+                            }, 100);
+                        }
+                    });
+                });
+                //*/
+                
+                it('as a list of arbitrary HTML with out of order removals', tests.html_list = function(complete){
+                    var template = new Live.Template({
+                        template:'test/simple-test.handlebars',
+                        complete : function(error, tracer){
+                            Live.model('item_list').length.should.equal(5);
+                            template.select('li').length.should.equal(5);
+                            Live.model('item_list').shift();
+                            setTimeout(function(){ //wait for the nodes to hit the DOM
+                                Live.model('item_list').length.should.equal(4);
+                                var lis = template.select('li');
+                                lis.length.should.equal(4);
+                                var domSelectedValues = [];
+                                lis.forEach(function(item, index){
+                                    domSelectedValues.push(item.textContent);
+                                });
+                                domSelectedValues[0].should.equal('Armand:14.8');
+                                complete();
+                            }, 200);
+                        }
+                    });
+                });
                 //*/
             });
         });
-        
+        //*
         describe('uses EventedArray and Backbone to', function(){
             before(function(done){
                 Live.models('backbone-hybrid');
@@ -204,6 +253,7 @@ describe('live-templates', function(){
                 Live.model('item_list', itemListModel);
                 addOne = new Backbone.Model(data.extra_users[0]);
                 addTwo = new Backbone.Model(data.extra_users[1]);
+                addThree = new Backbone.Model(data.extra_users[2]);
                 changeValues = function(){
                     data.extra_names.forEach(function(name, index){
                         Live.model('item_list')[index].set('name', name);
@@ -213,8 +263,9 @@ describe('live-templates', function(){
             });
     
             describe('render live data', tests.live);
-        });
+        }); //*/
         
+        //*
         describe('uses BackboneDeepModel to', function(){
             
             before(function(done){
@@ -231,6 +282,7 @@ describe('live-templates', function(){
                 Live.model('item_list', itemListModel);
                 addOne = new Backbone.DeepModel(data.extra_users[0]);
                 addTwo = new Backbone.DeepModel(data.extra_users[1]);
+                addThree = new Backbone.DeepModel(data.extra_users[2]);
                 changeValues = function(){
                     data.extra_names.forEach(function(name, index){
                         Live.model('item_list').at(index).set('name', name);
@@ -240,8 +292,9 @@ describe('live-templates', function(){
             });
     
             describe('render live data', tests.live);
-        });
+        }); //*/
         
+        //*
         describe('uses EventedArray and EventedObject to', function(){
             before(function(done){
                 Live.models('evented');
@@ -254,6 +307,7 @@ describe('live-templates', function(){
                 Live.model('item_list', itemListModel);
                 addOne = new EventedObject(data.extra_users[0]);
                 addTwo = new EventedObject(data.extra_users[1]);
+                addThree = new EventedObject(data.extra_users[2]);
                 changeValues = function(){
                     data.extra_names.forEach(function(name, index){
                         Live.model('item_list')[index].set('name', name);
@@ -263,8 +317,9 @@ describe('live-templates', function(){
             });
     
             describe('render live data', tests.live);
-        });
+        }); //*/
         
+        //*
         describe('uses EventedArray and BackboneDeepModel to', function(){
             before(function(done){
                 Live.models('backbone-deep-hybrid');
@@ -277,6 +332,7 @@ describe('live-templates', function(){
                 Live.model('item_list', itemListModel);
                 addOne = new Backbone.DeepModel(data.extra_users[0]);
                 addTwo = new Backbone.DeepModel(data.extra_users[1]);
+                addThree = new Backbone.DeepModel(data.extra_users[2]);
                 changeValues = function(){
                     data.extra_names.forEach(function(name, index){
                         Live.model('item_list')[index].set('name', name);
@@ -286,7 +342,7 @@ describe('live-templates', function(){
             });
     
             describe('render live data', tests.live);
-        });
+        }); //*/
     
     });
     

@@ -26,6 +26,11 @@
             "name" : "Jack", 
             "subject" : "Burton", 
             "value" : 293.2 
+        },
+        {
+            "name" : "Ferris", 
+            "subject" : "Bueller", 
+            "value" : 293.2 
         }
     ],
     "extra_names":[

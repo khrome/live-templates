@@ -3,7 +3,7 @@
         define(['array-events', 'object-events', 'handlebars', 'extended-emitter', 'dom-tool', 'async-arrays', 'dirname-shim'], 
         factory);
     }else if(typeof exports === 'object'){
-        module.exports = factory(require('array-events'), require('object-events'), require('Handlebars'), require('extended-emitter'), require('dom-tool'), require('async-arrays'));
+        module.exports = factory(require('array-events'), require('object-events'), require('handlebars'), require('extended-emitter'), require('dom-tool'), require('async-arrays'));
     }else{
         root.LiveTemplates = factory(
             root.EventedArray, root.EventedObject, root.Handlebars, 
@@ -29,6 +29,20 @@
     };
     
     var Live = {};
+    var error = function(error){
+        if(typeof error == 'string'){
+            error = new Error(error);
+        }
+        if(typeof Live.error == 'function'){
+            return Live.error(error)
+        }
+        if(typeof Live.error === true){
+            throw error;
+        }
+        if(typeof Live.error !== false){
+            console.log(error);
+        }
+    }
     var rqst;
     var fs;
     Live.defaultTemplateLoader = function(name, callback){
@@ -40,7 +54,7 @@
                 callback(err, data);
             });
         }else{
-            //remote
+            //remote : load on demand because this FN may be replaced
             (rqst || (rqst = require((typeof exports === 'object')?'request':'browser-request')))({
                 uri : url
             }, function(err, req, data){
@@ -75,7 +89,7 @@
         }
     };
     var getData = function(store, field){
-        if(!field) throw new Error('cannot fetch an empty key!');
+        if(!field) error('cannot fetch an empty key!');
         if(!Array.isArray(field)){
             return getData(store, field.split('.'))
         }else{
@@ -250,14 +264,14 @@
             if(!scanning) stopScanning();
             var now = Date.now();
             Object.keys(last).forEach(function(key){
-                if(last[key] && (now - last[key]) > 4000){
+                if(last[key] && (now - last[key]) > (Live.timeout || 4000)){
                     scanning = false;
-                    throw new Error('DOM Scanner stalled at '+(now - last[key])+' waiting for '+key+' ');
+                    error('DOM Scanner stalled at '+(now - last[key])+' waiting for '+key+' ');
                 }
             });
-            if((now - scannerStarted) > 4000){
+            if((now - scannerStarted) > (Live.timeout || 4000)){
                 scanning = false;
-                throw new Error('DOM Scanner stalled wating on '+setups+' jobs to complete to execute '+queue.length+' handlers');
+                error('DOM Scanner stalled wating on '+setups+' jobs to complete to execute '+queue.length+' handlers');
             }
         };
         var setupStepStarted = function(name){
@@ -307,7 +321,7 @@
                     var open = scanStack.pop();
                     setupStepStarted('close-list');
                     var object = ob.modelWrap(open.context);
-                    if(!object.isList()) throw new Error('cannot treat an object as a list');
+                    if(!object.isList()) error('cannot treat an object as a list');
                     var monitor = new Live.List({
                         list: object, 
                         open : open.node, 
@@ -337,10 +351,10 @@
                         }
                     }
                     if(!object) return complete(); //short circuit
-                    if(!object) new Error('could not find object:'+object, scanStack);
+                    if(!object) return error('could not find object:'+object, scanStack);
                     object = ob.modelWrap(object);
                     if(object.isList() && object.raw.length === 0) return complete(); //GTFO, this is an empty list
-                    if(object.isList()) throw new Error('attempting to render a list as an item');
+                    if(object.isList()) return error('attempting to render a list as an item') || console.log('?', object.get('uuid'), parts);
                     setupStepStarted('value');
                     var monitor = new Live.Data({
                         object: object,
@@ -354,7 +368,7 @@
                     });
                     ob.liveObjects.push(monitor);
                     break;
-                default : throw new Error('Unknown type: '+type);
+                default : return error('Unknown type: '+type);
             }
         });
         //*
@@ -379,10 +393,12 @@
                         object = options.current;
                         var value = object.get(field) || ''; //empty string to prevent undefined references
                         var start = value.lastIndexOf(str);
+                        //+7 refers to comment wrap ('<!---->')
+                        var newValue = node.value.substring(0, start)+value+node.value.substring(start+1+str.length+7);
                         if(node.value){
-                            node.value = node.value.substring(0, start)+value+node.value.substring(start+1+str.length);
+                            node.value = newValue;
                         }else{
-                            node.nodeValue = node.nodeValue.substring(0, start)+value+node.nodeValue.substring(start+1+str.length);
+                            node.nodeValue = newValue;
                         }
                     }
                 }
@@ -445,10 +461,10 @@
         
     };
     Live.Template.prototype.focus = function(){
-        
+        //focus on first focusable element, make sure shown(), add focus class, emit
     };
     Live.Template.prototype.blur = function(){
-        
+        //find selected element: blur, remove focus class, emit
     };
     
     //data handling
@@ -470,8 +486,8 @@
     Live.Data = function(options, callback){
         var object = options.object;
         if(options.template) this.template = options.template;
-        if(!object.isWrapped) throw new Error('attempting to LIVE an unwrapped object');
-        if(object.isList()) throw new Error('ILLEGAL: added list as a item');
+        if(!object.isWrapped) return error('attempting to LIVE an unwrapped object');
+        if(object.isList()) return error('ILLEGAL: added list as a item');
         var fieldName = options.field || options.fieldName;
         var markerElement = options.marker || options.markerElement;
         var tool = options.tool || options.domTool || Dom;
@@ -508,7 +524,7 @@
     Live.List = function(options, callback){
         var list = options.list;
         this.list = list;
-        if(!list.isWrapped) throw new Error('attempting to LIVE an unwrapped list');
+        if(!list.isWrapped) return error('attempting to LIVE an unwrapped list');
         var openMarker = options.open || options.openMarker;
         var closeMarker = options.close || options.closeMarker;
         var tool = options.tool || options.domTool || Dom;
@@ -521,6 +537,40 @@
             parent.removeChild(node);
         });
         this.emitter = new Emitter();
+        var itemEls = {};
+        list.on('remove', function(item){
+            item = Live.defaultModel(item);
+            if(itemEls[item.id]){
+                itemEls[item.id].forEach(function(node){ //todo: docfrag
+                    if(node.parentNode) node.parentNode.removeChild(node);
+                    //todo: recover or error
+                });
+                itemEls[item.id] = undefined;
+            }else{
+                console.log('&&', item)
+                console.log(itemELs)
+                return error('attempted to remove an item which does not exist');
+            }
+        });
+        list.on('sort', function(){
+            //todo: compute mutations instead of rebuilding
+            function update(){
+                //remove what's there
+                Object.keys(itemEls).forEach(function(uuid){
+                    itemEls[uuid].forEach(function(node){
+                        if(node.parentNode) node.parentNode.removeChild(node);
+                    });
+                });
+                //add in the new order
+                list.forEach(function(item){
+                    itemEls[item.id].forEach(function(node){
+                        openMarker.parentNode.insertBefore(node, closeMarker);
+                    });
+                })
+            }
+            if(window && window.requestAnimationFrame) window.requestAnimationFrame(update);
+            else update();
+        });
         function generateItemNodes(item, index, complete){
             if(options.template) options.template.startJob('subrender');
             var elCopies = Array.prototype.slice.apply(itemElements).map(function(node){
@@ -532,26 +582,34 @@
                 current : item
             }, function(error, tracer){
                 if(options.template) options.template.stopJob('subrender');
-                elCopies.forEach(function(node, index){
-                    openMarker.parentNode.insertBefore(node, closeMarker);
-                    //todo: handle ordered insertion
-                });
+                itemEls[theItem.id] = elCopies;
+                var itemAtPosition = list.get(index+1);
+                if(itemAtPosition && itemEls[itemAtPosition.id]){ //there's an item in the position you wanted: insert
+                    var firstElOfNextItem = itemEls[itemAtPosition.id][0];
+                    elCopies.forEach(function(node, position){
+                        openMarker.parentNode.insertBefore(node, firstElOfNextItem);
+                    });
+                }else{ // you are either out of range or your array is discontinuous (you rascal!)
+                    elCopies.forEach(function(node, position){
+                        openMarker.parentNode.insertBefore(node, closeMarker);
+                    });
+                }
                 ob.template.emit('new-list-item', elCopies, theItem);
                 complete();
             }, options.template.tracer?options.template.tracer.subtrace():undefined);
         }
-        list.on('remove', function(){
-            
-        });
+        
         arrays.forEachEmission(list.raw, function(item, index, done){
+            item = Live.defaultModel(item); //wrap the initial items
             generateItemNodes(item, index, done);
         }, callback);
-        this.addFN = function(item){
+        this.addFN = function(item, index){
             ob.template.startJob('generate-nodes');
             if(Live.automap && Live.defaultModel.automap && !Live.defaultModel.is(item)){
                 item = Live.defaultModel.automap(item);
             }
-            generateItemNodes(item, undefined, function(){
+            item = Live.defaultModel(item);
+            generateItemNodes(item, index, function(){
                 ob.template.stopJob('generate-nodes');
             });
         };
@@ -579,7 +637,7 @@
         var ob = this;
         require([name], function(Component){
             if(!Component){
-                throw new Error('Component \''+name+'\' was not found, perhaps it was not imported.');
+                throw new Error('Component \''+name+'\' was not found, perhaps it was not imported?');
             }
             var instance = Component.createComponent?Component.createComponent(el, options):new Component(el, options);
             ob.component = instance;

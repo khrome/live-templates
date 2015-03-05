@@ -1,15 +1,15 @@
 (function(root, factory){
     if (typeof define === 'function' && define.amd){
-        define(['backbone-deep-model'], 
+        define(['backbone-deep-model', 'hashmap'], 
         factory);
     }else if(typeof exports === 'object'){
-        module.exports = factory(require('backbone-deep-model'));
+        module.exports = factory(require('backbone-deep-model'), require('hashmap'));
     }else{
         root.LiveTemplates = factory(
             root.Backbone
         );
     }
-}(this, function(Backbone){ //Emitter, domTool, request + optional: Handlebars, Backbone
+}(this, function(Backbone, Hashmap){ //Emitter, domTool, request + optional: Handlebars, Backbone
     function passthruEvent(subscribeType, model, event, field, handler){
         if(typeof field == 'function'){
             handler = field;
@@ -18,13 +18,22 @@
         if(field) model[subscribeType](event+':'+field, handler);
         else model[subscribeType](event, handler);
     }
+    var wrappers = new Hashmap(); //todo: this will leak memory, need GC
     var backboneModel = function(model){ //backbone implementation
         if(!model) throw new Error('You must pass in a model to this handler!');
-        if(model['_LIVE_WRAP']) return model['_LIVE_WRAP'];
+        //console.log('LIVE!!', !!model['_LIVE_WRAP'], model['_LIVE_WRAP']?model['_LIVE_WRAP'].id+' : '+model['_LIVE_WRAP'].isWrapped:'');
+        //if(model['_LIVE_WRAP']) return model['_LIVE_WRAP'];
+        if(wrappers.get(model)) return wrappers.get(model);
         if(model.isWrapped) return model; //no double wraps
+        //console.log('NEW WRAP');
         var wrap = {
             get : function(field){
-                return model.get(field);
+                if(typeof field == 'number' && wrap.isList()){
+                    var m = model && model.at(field) ? backboneModel(model.at(field)):undefined;
+                    return m;
+                }else{
+                    return model.get(field);
+                }
             },
             set : function(field, value){
                 return model.set(field, value);
@@ -44,8 +53,8 @@
                         passthruEvent('on', model, event, field, handler.subhandler);
                         break;
                     case 'add' :
-                        var subhandler = function(item){
-                            handler(item);
+                        var subhandler = function(model, collection, options){
+                            handler(model, options.at);
                         };
                         if(handler) handler.subhandler = subhandler;
                         passthruEvent('on', model, event, field, subhandler);
@@ -85,12 +94,7 @@
                 }
             }
         };
-        Object.defineProperty(wrap, '_LIVE_WRAP', {
-            get : function(){
-                return wrap;
-            },
-            set : function(value){ } //fail silently
-        });
+        wrappers.set(model, wrap);
         Object.defineProperty(wrap, 'length', {
             get : function(){
                 return model.length;

@@ -1,17 +1,18 @@
 (function(root, factory){
     if (typeof define === 'function' && define.amd){
-        define(['array-events', 'object-events', 'async-arrays'], 
+        define(['array-events', 'object-events', 'async-arrays', 'hashmap'], 
         factory);
     }else if(typeof exports === 'object'){
-        module.exports = factory(require('array-events'), require('object-events'), require('async-arrays'));
+        module.exports = factory(require('array-events'), require('object-events'), require('async-arrays'), require('hashmap'));
     }else{
         root.LiveTemplates = factory(
-            root.Backbone
+            root.Backbone, root.EventedObject, root.EventedArray, root.Hashmap
         );
     }
-}(this, function(EventedArray, EventedObject, arrays){
+}(this, function(EventedArray, EventedObject, arrays, Hashmap){
+    var wrappers = new Hashmap(); //todo: this will leak memory, need GC
     var eventedModel = function(model){
-        if(model['_LIVE_WRAP']) return model['_LIVE_WRAP'];
+        if(wrappers.get(model)) return wrappers.get(model);
         if(model.isWrapped) return model; //no double wraps
         if(!(EventedArray.is(model) || EventedObject.is(model)) ){
             //console.log(model, new Error().stack.split("\n"));
@@ -32,7 +33,12 @@
         }
         var wrap = {
             get : function(field){
-                return model.get(field);
+                if(typeof field == 'number' && wrap.isList()){
+                    var m = model && model[field] ? eventedModel(model[field]):undefined;
+                    return m;
+                }else{
+                    return model.get(field);
+                }
             },
             set : function(field, value){
                 return model.set(field, value);
@@ -43,10 +49,10 @@
                     handler = field;
                     field = undefined;
                 }
-                return normalizeInboundMessages(model, 'on', event, field, function(eventObject){
+                return normalizeInboundMessages(model, 'on', event, field, function(eventObject, two){
                     var target = (event == 'change')?eventObject.value:eventObject;
-                    handler(target);
-                }, arguments);
+                    handler.apply(handler, [target, two]);
+                }, [event, field, handler]);
             },
             off : function(event, field, handler){
                 //return model.off.apply(model, arguments);
@@ -66,12 +72,7 @@
                 }, arguments);
             }
         };
-        Object.defineProperty(wrap, '_LIVE_WRAP', {
-            get : function(){
-                return wrap;
-            },
-            set : function(value){ } //fail silently
-        });
+        wrappers.set(model, wrap);
         Object.defineProperty(wrap, 'length', {
             get : function(){
                 return model.length;
