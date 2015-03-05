@@ -1,6 +1,6 @@
 #live-templates.js
 
-Live templates allows you to bind an object or list directly to the dom created by your template, so that as your objects update this is reflected in the DOM without any need for selection logic, html manipulation or textual replacement. Generally speaking, it avoids working on Elements altogether. The other major difference when compared to most Model/View solutions is that live-templates can bind to any number of models or lists... I don't pretend that real interfaces bind 1:1 with the models that power them, so you do
+Live templates allows you to bind an object or list directly to the dom created by your template, so that as your objects update this is reflected in the DOM without any need for selection logic, html manipulation or textual replacement. Generally speaking, it avoids working on Elements altogether. The other major difference when compared to most Model/View solutions is that live-templates can bind to any number of models or lists... I don't pretend that real interfaces bind 1:1 with the models that power them, so you don't have to do organizational gymnastics to maintain a complex interface.
 
 By allowing templates to access many models on a namespace, you remove the need for any kind of boilerplate to bind a view to it's model allowing you to reduce MVVM or MVC to MV. In addition, because the models are directly attached to the templates, the views update themselves. It runs on the client or on the server under Node.js.
 
