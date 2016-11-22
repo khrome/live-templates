@@ -146,8 +146,31 @@
     Live.defaultOpen  = '[';
     Live.defaultClose = ']';
     
+    Live.enableRequestTemplateLoader = function(request, directory){
+        var dir = directory || '/templates/';
+        Live.defaultTemplateLoader = function(name, callback){
+            request(
+                { uri : dir + name }, 
+                function(e, r, d){ callback(e, (d.toString && d.toString()) || '') }
+            );
+        };
+    };
+    
+    Live.setGlobalContext = function(context){
+        Live.bondTarget = function(){ return context };
+    };
+    
     Live.Template = function(options){
-        if(typeof options == 'string') options = {template:options};
+        if(typeof options == 'string'){
+            if(arguments[1] && typeof arguments[1] == 'function'){
+                options = {
+                    template : options,
+                    ready : arguments[1]
+                };
+            }else{
+                options = {template:options};
+            }
+        }
         this.options = options || {};
         this.id = Math.floor(Math.random()*100000)+''; //todo: better ids
         if(!this.options.opener) this.options.opener = Live.defaultOpen;
@@ -412,6 +435,7 @@
             ob.ready(function(){ //because async stuff may be happening to the tree
                 if(options.onLoad) options.onLoad.apply(options.onLoad, args);
                 if(options.complete) options.complete.apply(options.complete, args);
+                if(options.ready) options.ready(ob);
             });
         }
         //this.tracer = new Dom.Tool.Tracer();
@@ -435,6 +459,13 @@
                 done(undefined, tracer, html);
             }
         }, this.tracer);
+    };
+    Live.Template.prototype.appendTo = function(el){
+        if(!this.dom) throw new Error('append Called before dom was generated');
+        Array.prototype.slice.apply(this.dom, [0]).forEach(function(component){
+            if(typeof component == 'string')  el.appendText(component);
+            else el.appendChild(component);
+        });
     };
     Live.Template.prototype.on = function(){
         return this.events.on.apply(this.events, arguments);
@@ -673,6 +704,15 @@
     Live.value = nodeValue;
     
     Live.log = function(str){  };
+    
+    Live.template = function(name){
+        var promise = new Promise(function(resolve, reject){
+            new Live.Template(name, function(view){
+                resolve(view);
+            });
+        });
+        return promise;
+    }
     
     Live.models = function(type){
         if(typeof type === 'string'){

@@ -4,7 +4,7 @@
     }else if(typeof exports === 'object'){
         module.exports = factory(require('handlebars'));
     }else{
-        root.LiveTemplates = factory(root.Handlebars);
+        root.LiveTemplatesHandlerBarsAdapter = factory(root.Handlebars);
     }
 }(this, function(Handlebars){
     var handlebarsTemplates = function(loader){ //handlebars implementation

@@ -17,7 +17,7 @@ var changeValues;
 var tests = {};
 
 //model libraries:
-var Backbone = require('backbone-deep-model');
+var Backbone = require('backbone');
 var EventedArray = require('array-events');
 var EventedObject = require('object-events');
 
@@ -39,6 +39,7 @@ describe('live-templates', function(){
                     Live.bondTarget = function(){
                         return window;
                     };
+                    console.log('##', !!window.NodeList);
                     //rootContext = window;
                     global.HTMLCollection = window.HTMLCollection;
                     global.NodeList = window.NodeList;
@@ -47,25 +48,23 @@ describe('live-templates', function(){
             );
         });
         
-        describe('uses Backbone to', function(){
+        //*
+        describe('uses EventedArray and EventedObject to', function(){
             before(function(done){
-                Live.models('backbone');
+                Live.models('evented');
                 Live.views('handlebars');
-                userModel = new Backbone.Model(shallowData.user);
-                itemListModel = new Backbone.Collection([], {
-                      model: userModel
-                });
-                shallowData.user_list.forEach(function(item){
-                    itemListModel.add(new Backbone.Model(item));
-                });
+                userModel = new EventedObject(data.user);
+                itemListModel = new EventedArray(data.user_list.map(function(item){
+                    return new EventedObject(item);
+                }));
                 Live.model('user', userModel);
                 Live.model('item_list', itemListModel);
-                addOne = new Backbone.Model(data.extra_users[0]);
-                addTwo = new Backbone.Model(data.extra_users[1]);
-                addThree = new Backbone.Model(data.extra_users[2]);
+                addOne = new EventedObject(data.extra_users[0]);
+                addTwo = new EventedObject(data.extra_users[1]);
+                addThree = new EventedObject(data.extra_users[2]);
                 changeValues = function(){
                     data.extra_names.forEach(function(name, index){
-                        Live.model('item_list').at(index).set('name', name);
+                        Live.model('item_list')[index].set('name', name);
                     });
                 };
                 done();
@@ -154,7 +153,7 @@ describe('live-templates', function(){
                                 domSelectedValues.length.should.equal(0);
                                 template.destroy();
                                 complete();
-                            }, 100);
+                            }, 1000);
                         }
                     });
                 });
@@ -205,12 +204,13 @@ describe('live-templates', function(){
                                 Live.model('item_list').forEach(function(item){
                                     dataGeneratedValues.push(item.get('name')+':'+item.get('value'));
                                 });
+                                console.log(domSelectedValues, dataGeneratedValues, addThree.attributes);
                                 dataGeneratedValues.forEach(function(item, index){
                                     domSelectedValues[index].should.equal(item)
                                 });
                                 //console.log('!!!', dataGeneratedValues, domSelectedValues);
                                 complete();
-                            }, 100);
+                            }, 1000);
                         }
                     });
                 });
@@ -266,6 +266,59 @@ describe('live-templates', function(){
         }); //*/
         
         //*
+        describe('uses Backbone to', function(){
+            before(function(done){
+                Live.models('backbone');
+                Live.views('handlebars');
+                userModel = new Backbone.Model(shallowData.user);
+                itemListModel = new Backbone.Collection([], {
+                      model: userModel
+                });
+                shallowData.user_list.forEach(function(item){
+                    itemListModel.add(new Backbone.Model(item));
+                });
+                Live.model('user', userModel);
+                Live.model('item_list', itemListModel);
+                addOne = new Backbone.Model(data.extra_users[0]);
+                addTwo = new Backbone.Model(data.extra_users[1]);
+                addThree = new Backbone.Model(data.extra_users[2]);
+                changeValues = function(){
+                    data.extra_names.forEach(function(name, index){
+                        Live.model('item_list').at(index).set('name', name);
+                    });
+                };
+                done();
+            });
+    
+            describe('render live data', tests.live);
+        }); //*/
+        
+        /*
+        describe('uses EventedArray and BackboneDeepModel to', function(){
+            before(function(done){
+                Live.models('backbone-deep-hybrid');
+                Live.views('handlebars');
+                userModel = new Backbone.DeepModel(data.user);
+                itemListModel = new EventedArray(data.user_list.map(function(item){ 
+                    return new Backbone.DeepModel(item);
+                }));
+                Live.model('user', userModel);
+                Live.model('item_list', itemListModel);
+                addOne = new Backbone.DeepModel(data.extra_users[0]);
+                addTwo = new Backbone.DeepModel(data.extra_users[1]);
+                addThree = new Backbone.DeepModel(data.extra_users[2]);
+                changeValues = function(){
+                    data.extra_names.forEach(function(name, index){
+                        Live.model('item_list')[index].set('name', name);
+                    });
+                };
+                done();
+            });
+    
+            describe('render live data', tests.live);
+        }); //*/
+        
+        /*
         describe('uses BackboneDeepModel to', function(){
             
             before(function(done){
@@ -286,56 +339,6 @@ describe('live-templates', function(){
                 changeValues = function(){
                     data.extra_names.forEach(function(name, index){
                         Live.model('item_list').at(index).set('name', name);
-                    });
-                };
-                done();
-            });
-    
-            describe('render live data', tests.live);
-        }); //*/
-        
-        //*
-        describe('uses EventedArray and EventedObject to', function(){
-            before(function(done){
-                Live.models('evented');
-                Live.views('handlebars');
-                userModel = new EventedObject(data.user);
-                itemListModel = new EventedArray(data.user_list.map(function(item){
-                    return new EventedObject(item);
-                }));
-                Live.model('user', userModel);
-                Live.model('item_list', itemListModel);
-                addOne = new EventedObject(data.extra_users[0]);
-                addTwo = new EventedObject(data.extra_users[1]);
-                addThree = new EventedObject(data.extra_users[2]);
-                changeValues = function(){
-                    data.extra_names.forEach(function(name, index){
-                        Live.model('item_list')[index].set('name', name);
-                    });
-                };
-                done();
-            });
-    
-            describe('render live data', tests.live);
-        }); //*/
-        
-        //*
-        describe('uses EventedArray and BackboneDeepModel to', function(){
-            before(function(done){
-                Live.models('backbone-deep-hybrid');
-                Live.views('handlebars');
-                userModel = new Backbone.DeepModel(data.user);
-                itemListModel = new EventedArray(data.user_list.map(function(item){ 
-                    return new Backbone.DeepModel(item);
-                }));
-                Live.model('user', userModel);
-                Live.model('item_list', itemListModel);
-                addOne = new Backbone.DeepModel(data.extra_users[0]);
-                addTwo = new Backbone.DeepModel(data.extra_users[1]);
-                addThree = new Backbone.DeepModel(data.extra_users[2]);
-                changeValues = function(){
-                    data.extra_names.forEach(function(name, index){
-                        Live.model('item_list')[index].set('name', name);
                     });
                 };
                 done();

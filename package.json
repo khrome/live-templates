@@ -1,7 +1,7 @@
 {
     "name": "live-templates",
     "homepage": "https://github.com/khrome/live-templates",
-    "version": "0.3.0",
+    "version": "1.0.0",
     "main": "live-templates.js",
     "description": "Bind your templates directly to models, and get live updates for free with no boilerplate.",
     "keywords": [
@@ -25,11 +25,16 @@
         "handlebars" : "*",
         "extended-emitter" : "*",
         "dom-tool" : "*",
+        "dirname-shim" : "*",
+        "hashmap" : "*",
         "async-arrays" : "*"
     },
     "devDependencies": {
         "mocha": "*",
         "chai": "*",
+        "underscore": "*",
+        "backbone-deep-model": "*",
+        "backbone": "*",
         "jsdom" : "*"
     },
     "optionalDependencies": {

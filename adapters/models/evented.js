@@ -67,7 +67,6 @@
             isWrapped : true,
             once : function(event, field, handler){
                 return normalizeInboundMessages(model, 'once', event, field, function(eventObject){
-                    console.log(eventObject)
                     handler(eventObject.value);
                 }, arguments);
             }
