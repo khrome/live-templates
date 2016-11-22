@@ -1,0 +1,3 @@
+##Configuration
+
+    Live.models('evented');
