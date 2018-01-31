@@ -1,4 +1,5 @@
-#live-templates.js
+live-templates.js
+=================
 
 [![NPM version](https://img.shields.io/npm/v/live-templates.svg)]()
 [![npm](https://img.shields.io/npm/dt/live-templates.svg)]()
@@ -8,91 +9,70 @@ Bind data directly to HTML. No virtual DOM! No wasted elements! Write only chang
 
 Generally speaking, it's as if you insert variables directly onto the page, rather than rendering dead text.
 
-###More Detail ...
+What?!
+------
 
-Bind variables directly to markup, so that as your objects update thier DOM references without any need for selection logic, html manipulation or textual replacement.
+As your objects update, thier DOM references are kept in sync without any need for selection logic, html manipulation or textual replacement and does not require a 1:1 binding between view and model. Because templates have access to many models on a namespace, it removes the need for any kind of boilerplate to bind a view to it's model allowing you to reduce MVVM or MVC to MV. It runs on the client or on the server under Node.js. It uses a comment marking strategy which is widely compatible with new and old browsers alike and it's economical because the only new DOM creation is rows being added or deleted and all values are directly inserted at a rate your browser can withstand.
 
-The other major difference when compared to most Model/View solutions is that live-templates can bind to any number of models or lists... I don't pretend that real interfaces bind 1:1 with the models that power them.
+Because `live-templates` does not replace or rerender HTML elements, **there is no orphaned/zombie listener problem**, so we can get back to using core web features.
 
-Because templates have access to many models on a namespace, it removes the need for any kind of boilerplate to bind a view to it's model allowing you to reduce MVVM or MVC to MV. It runs on the client or on the server under Node.js.
-
-Because I do not replace or rerender HTML elements, **there is no orphaned/zombie listener problem**, so we can get back to using core web features.
-
-##Installation
+Installation
+------------
 
     npm install live-templates
-    
-####Including an AMD module
+
+Usage
+-----
+`live-templates` supports a number of module idioms, because it is natively UMD it may be included without modification from source and will work in all targets. While it is webpack and browserify (and other preprocessors), it is written in browser and node compatible JS and needs no retargeting to function.
+
+- **AMD**
 
     define(['live-templates'], function(Live){
     	//do stuff
     });
-    
-####Including a commonjs module
-This works in Node.js and Browsers (via webpack)
+
+- **commonjs**
 
     var Live = require('live-templates');
 
-##Configuration
-The simplest solution is [the Evented model](docs/evented.md) which wraps vanilla arrays and objects with notifiers, which are then bonded to the view. Then when you `.push()` into an array you got from the model, it pushes into the interface as well.
+- **browser global**
 
-Soon there [will be support](docs/indexed.md) for [Indexed.Set]()
+    <script src="node_modules/live-templates/live-templates.js"></script>
 
-There is also [support for backbone models](docs/backbone.md), with support for both vanilla (flat) objects as well as `backbone-deep-model` (This module's future is uncertain).
+Configuration
+-------------
+`live-templates` wraps the raw arrays and objects you provide with [array-events](https://www.npmjs.com/package/array-events) and [object-events](https://www.npmjs.com/package/object-events) which then are then always up to date in the DOM as long as you use functions to update them. Soon there will be support for [Indexed.Set](https://www.npmjs.com/package/indexed-set) and it's possible to write an adapter for almost any ORM or object hierarchy. To setup the Live object:
 
-It's also possible to write an adapter for almost any ORM or object heirarchy.
+	Live.templates(require(live-templates/models/evented));
+  Live.templates(require(live-templates/models/handlebars));
+	Live.setGlobalContext(window);
 
-#### setting up the `Live` object
+[`request`](https://www.npmjs.com/package/request) and [`browser-request`](https://www.npmjs.com/package/browser-request) are used by default, but should you want to change the loader:
 
-Set your model system
-
-	//set your models
-	Live.templates(<model name>);
-	
-	//set your templates (only handlebars, for now)
-    Live.templates('handlebars');
-    
-    //set the root context (usually window)
-	Live.setGlobalContext(window); 
-
-	//optionally, define a loader
 	Live.enableRequestTemplateLoader(request, '/myTemplateDir/');
-	
-The default loader will work both locally in node as well as using network requests in the client via UMD, or you can pass the instance of `request` you are using (`browser-request` is fine in the client)
 
+The Model Namespace
+-------------------
+To register a model, you just have to call `Live.model(<namespace>, <model or collection>)` and pass in a namespace (something like `root.subitem.item`) and the object or array. And to return the wrapped value just use `Live.model(<namespace>)`.
 
-##Creating Models
-To register a model, you just have to call `model` and if you pass in a raw array or object they are converted to your chosen type as it's registered.
+Creating Views
+--------------
 
-    Live.model(namespace, <model or collection>);
-
-and to return it's value:
-
-    Live.model(namespace);
-    
-##Creating Views
-    
-###`Live.template()` vs `new Live.Template()`
-`Live.template()` uses a promise based idiom which implicitly creates instances (a popular way to work) and `new Live.Template()` is the underlying implementation which uses explicit object creation and callbacks.
-
-###`Live.template()`
+###Promises
+`Live.template()` uses a promise based idiom
 
     Live.template(<template>).then(function(view){
-    	// view.dom is available as well as view.appendTo(el);
+    	  // view.dom is available as well as view.appendTo(el);
     });
-    
-###`new Live.Template()`
-Live template instances are the logic which runs each bonded UI. There are two recommended forms of syntax (though in practice, you may find other variations are possible). The first allows you to directly control the rendered output:
 
-	new Live.Template('my-template.handlebars', function(view){
-    	// view.dom is available as well as view.appendTo(el);
+###Objects
+`new Live.Template()` creates a new instance of the view, which is immediately ready for interaction (though devoid of any content until the callback)
+
+	  var sameView = new Live.Template('my-template.handlebars', function(view){
+    	  // view.dom is available as well as view.appendTo(el);
     });
-    
-More simply, if you do not need signalling, you may directly inject content into an element
 
-	var view = new Live.Template('my-template.handlebars', '#targetid');
-
-There are also some member functions:
+Either way, the produced view has a number of events (`blur`, `focus`, `activate`, `deactivate`, `dom-update`, `before-dom-update`, `object-update`, `before-object-update`) and member functions:
 
 - `.on('event'[, conditions], handlerFunction);` An implementation of [Emitter.on()](http://nodejs.org/api/events.html#events_emitter_on_event_listener) which accepts mongo-style selectors.
 - `.once('event'[, conditions], handlerFunction);` An implementation of [Emitter.once()](http://nodejs.org/api/events.html#events_emitter_once_event_listener) which accepts mongo-style selectors.
@@ -100,23 +80,13 @@ There are also some member functions:
 - `.emit('event', data ... );` An implementation of [Emitter.emit()](http://nodejs.org/api/events.html#events_emitter_emit_event_arg1_arg2).
 - `.when(event/asyncFn ... );` Allows you to chain ready functions or promises to events.
 - `.focus();` Force browser/application cursor focus onto this element
-- `.blur();` Force browser/application cursor focus onto this element 
+- `.blur();` Force browser/application cursor focus onto this element
 - `.activate();` Make sure an element is in it's active state, without triggering focus
 - `.deactivate();` Make sure an element is in it's inactive state, without triggering blur
-    
-###Live.Template Events
-
-Emitted events include `blur`, `focus`, `activate`, `deactivate` as well as:
-
-- `dom-update` : throw an event when a DOM element is updated arguments are: element, changes where changes is an array of objects with fields: model, name, value, oldValue
-- `before-dom-update` : throw an event before a DOM element is updated, with the same arguments as dom-update
-- `object-update` : throw an event when an object field which is bound to this template changes with fields: model, name, value, oldValue, domNode, target where target is either 'body' or an attribute name
-- `before-object-update` : throw an event before an object field which is bound to this template changes, with the same arguments as object-update
-
-######*A Note: for now DOM updates and object updates are 1:1, this will not always be true... code accordingly.*
 
 
-as well, update events can be fired from the DOM by calling `view.proxyEventsToDOM();` if you'd prefer to interact with changes that way.
+If you want the events to bubble through the DOM call `view.proxyEventsToDOM();`
+
 also if you bind a field to an input, you may automatically update the model on field changes:
 
     view.enableModelFeedback([selector, ]confirmationFunction);
@@ -128,58 +98,18 @@ There's also some available properties:
 
 ##Template Macros
 
-Each Template language has macros injected into them, in Handlebars this takes the form of 'model' and 'models'.
+Handlebars integration with `live-templates` takes the form of 'model' and 'models'. All template loading and interaction is handled for you.
 
 - **{{#models "model-list-name"}}** : this iterates through a list of models and generates a live template for each object, and monitors the list adding and removing content to reflect the model
 - **{{#model "<model-name>:<field-name>"}}** : this outputs a single live field from an object, if the model-name is omitted and you are inside a `{{models}}` scope that item is used.
 
+Examples
+--------
+- [**User Feed**](docs/example.md) - A simple feed-based content stream
+- **Chat App**[TBD]
+- **Badges**[TBD]
 
-##Example : A User Feed
 
-Let's define some models (we'll assume we've loaded the vars user, feed, offers):
-
-    Templates.model('user', user);
-    Templates.model('feed', feed);
-    Templates.model('offers', offers);
-
-then let's define a simplistic view, 'feed':
-
-    <header>{{strings.sitename}} : {{strings.tagline}}</header>
-    <nav>
-        <a href="{{strings.signup}}">{{config.privacy_policy_url}}</a>
-        <a href="{{strings.login}}">{{config.terms_of_service_url}}</a>
-        <a href="{{strings.products}}">{{config.help_url}}</a>
-        <a href="{{strings.mission}}">{{config.about_url}}</a>
-    </nav>
-    <article id="feed">
-        <h1>{{strings.feed}}</h1>
-        {{#models "feed"}}
-            <div class="feed_item">
-                <h2>{{model ":subject"}}</h2>
-                <span class="byline">{{model ":name"}} <span>{{model ":role"}}</span></span>
-                <p>
-                    {{model ":body"}}
-                </p>
-            </div>
-        {{/models}}
-    </article>
-    <aside id="offers">
-        {{#models "offers"}}
-            <a href="{{model ":link"}}"><img src="{{model ":image"}}"/></a>
-        {{/models}}
-    </aside>
-    <footer>
-        <a href="{{strings.privacy_policy}}">{{config.privacy_policy_url}}</a>
-        <a href="{{strings.terms_of_service}}">{{config.terms_of_service_url}}</a>
-        <a href="{{strings.help}}">{{config.help_url}}</a>
-        <a href="{{strings.about}}">{{config.about_url}}</a>
-    </footer>
-
-then let's create an instance of that view (assuming we have a 'strings' var and a 'config var') and attach it to the body:
-
-    var common = {string:strings, config:config};
-    var view = Template.createView('feed', common, document.body);
-    
 Now you can just concentrate on the models/data and stop screwing around in the DOM. (and there was much rejoicing)
 
 ##Contributing
@@ -187,10 +117,10 @@ Make sure you add a test for your new feature, then submit a pull request.
 
 ##Testing
 for the local tests, just run
-    
+
     mocha
-    
-for the full suite of tests run 
+
+for the full suite of tests run
 
 	./full-test.sh
 

@@ -1,2 +1,0 @@
-##Configuration
-Not yet implemented
