@@ -28,7 +28,7 @@ Usage
 - **AMD**
 
     define(['live-templates'], function(Live){
-    	//do stuff
+        //do stuff
     });
 
 - **commonjs**
@@ -43,13 +43,13 @@ Configuration
 -------------
 `live-templates` wraps the raw arrays and objects you provide with [array-events](https://www.npmjs.com/package/array-events) and [object-events](https://www.npmjs.com/package/object-events) which then are then always up to date in the DOM as long as you use functions to update them. Soon there will be support for [Indexed.Set](https://www.npmjs.com/package/indexed-set) and it's possible to write an adapter for almost any ORM or object hierarchy. To setup the Live object:
 
-	Live.templates(require(live-templates/models/evented));
-  Live.templates(require(live-templates/models/handlebars));
-	Live.setGlobalContext(window);
+    Live.templates(require(live-templates/models/evented));
+    Live.templates(require(live-templates/models/handlebars));
+    Live.setGlobalContext(window);
 
 [`request`](https://www.npmjs.com/package/request) and [`browser-request`](https://www.npmjs.com/package/browser-request) are used by default, but should you want to change the loader:
 
-	Live.enableRequestTemplateLoader(request, '/myTemplateDir/');
+    Live.enableRequestTemplateLoader(request, '/myTemplateDir/');
 
 The Model Namespace
 -------------------
@@ -62,14 +62,14 @@ Creating Views
 `Live.template()` uses a promise based idiom
 
     Live.template(<template>).then(function(view){
-    	  // view.dom is available as well as view.appendTo(el);
+          // view.dom is available as well as view.appendTo(el);
     });
 
 ###Objects
 `new Live.Template()` creates a new instance of the view, which is immediately ready for interaction (though devoid of any content until the callback)
 
-	  var sameView = new Live.Template('my-template.handlebars', function(view){
-    	  // view.dom is available as well as view.appendTo(el);
+      var sameView = new Live.Template('my-template.handlebars', function(view){
+          // view.dom is available as well as view.appendTo(el);
     });
 
 Either way, the produced view has a number of events (`blur`, `focus`, `activate`, `deactivate`, `dom-update`, `before-dom-update`, `object-update`, `before-object-update`) and member functions:
@@ -122,7 +122,7 @@ for the local tests, just run
 
 for the full suite of tests run
 
-	./full-test.sh
+    ./full-test.sh
 
 ##Disclaimer
 
