@@ -48,9 +48,9 @@ Configuration
     Live.setGlobalContext(window);
 ```
 [`request`](https://www.npmjs.com/package/request) and [`browser-request`](https://www.npmjs.com/package/browser-request) are used by default, but should you want to change the loader:
-
+```javascript
     Live.enableRequestTemplateLoader(request, '/myTemplateDir/');
-
+```
 The Model Namespace
 -------------------
 To register a model, you just have to call `Live.model(<namespace>, <model or collection>)` and pass in a namespace (something like `root.subitem.item`) and the object or array. And to return the wrapped value just use `Live.model(<namespace>)`.
@@ -60,18 +60,18 @@ Creating Views
 
 ###Promises
 `Live.template()` uses a promise based idiom
-
+```javascript
     Live.template(<template>).then(function(view){
           // view.dom is available as well as view.appendTo(el);
     });
-
+```
 ###Objects
 `new Live.Template()` creates a new instance of the view, which is immediately ready for interaction (though devoid of any content until the callback)
-
+```javascript
       var sameView = new Live.Template('my-template.handlebars', function(view){
           // view.dom is available as well as view.appendTo(el);
     });
-
+```
 Either way, the produced view has a number of events (`blur`, `focus`, `activate`, `deactivate`, `dom-update`, `before-dom-update`, `object-update`, `before-object-update`) and member functions:
 
 - `.on('event'[, conditions], handlerFunction);` An implementation of [Emitter.on()](http://nodejs.org/api/events.html#events_emitter_on_event_listener) which accepts mongo-style selectors.
