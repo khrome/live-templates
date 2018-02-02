@@ -47,7 +47,7 @@ Configuration
     Live.templates(require(live-templates/models/handlebars));
     Live.setGlobalContext(window);
 ```
-[`request`](https://www.npmjs.com/package/request) and [`browser-request`](https://www.npmjs.com/package/browser-request) are used by default, but should you want to change the loader:
+[`request`](https://www.npmjs.com/package/request) and [`browser-request`](https://www.npmjs.com/package/browser-request) are used by default(serving from the `/templates/` directory), but should you want to change the loader:
 ```javascript
     Live.enableRequestTemplateLoader(request, '/myTemplateDir/');
 ```
@@ -58,14 +58,14 @@ To register a model, you just have to call `Live.model(<namespace>, <model or co
 Creating Views
 --------------
 
-###Promises
+### Promises
 `Live.template()` uses a promise based idiom
 ```javascript
     Live.template(<template>).then(function(view){
         // view.dom is available as well as view.appendTo(el);
     });
 ```
-###Objects
+### Objects
 `new Live.Template()` creates a new instance of the view, which is immediately ready for interaction (though devoid of any content until the callback)
 ```javascript
     var sameView = new Live.Template('my-template.handlebars', function(view){
@@ -96,7 +96,8 @@ There's also some available properties:
 
 - **view.dom** : this is the generated DOM, which may be a DocumentFragment with many nodes or a single node;
 
-##Template Macros
+Template Macros
+---------------
 
 Handlebars integration with `live-templates` takes the form of 'model' and 'models'. All template loading and interaction is handled for you.
 
