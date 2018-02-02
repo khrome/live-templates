@@ -23,7 +23,7 @@ Installation
 
 Usage
 -----
-`live-templates` supports a number of module idioms, because it is natively UMD it may be included without modification from source and will work in all targets. While it is webpack and browserify (and other preprocessors), it is written in browser and node compatible JS and needs no retargeting to function.
+`live-templates` supports a number of module idioms, because it is natively UMD it may be included without modification from source and will work in all targets. While it is webpack and browserify (and other preprocessors) compatible, it is written in browser and node compatible JS and needs no retargeting to function.
 
 - **AMD**
 ```javascript
@@ -43,8 +43,8 @@ Configuration
 -------------
 `live-templates` wraps the raw arrays and objects you provide with [array-events](https://www.npmjs.com/package/array-events) and [object-events](https://www.npmjs.com/package/object-events) which then are then always up to date in the DOM as long as you use functions to update them. Soon there will be support for [Indexed.Set](https://www.npmjs.com/package/indexed-set) and it's possible to write an adapter for almost any ORM or object hierarchy. To setup the Live object:
 ```javascript
-    Live.models(require(live-templates/models/evented));
-    Live.templates(require(live-templates/models/handlebars));
+    Live.models(require('live-templates/models/evented'));
+    Live.templates(require('live-templates/models/handlebars'));
     Live.setGlobalContext(window);
 ```
 [`request`](https://www.npmjs.com/package/request) and [`browser-request`](https://www.npmjs.com/package/browser-request) are used by default(serving from the `/templates/` directory), but should you want to change the loader:
