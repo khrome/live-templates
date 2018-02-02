@@ -5,7 +5,7 @@ live-templates.js
 [![npm](https://img.shields.io/npm/dt/live-templates.svg)]()
 [![Travis](https://img.shields.io/travis/khrome/live-templates.svg)]()
 
-Bind data directly to HTML. No virtual DOM! No wasted elements! Write only changes directly onto the elements in question (at a rate that the browser can withstand) in the client or on the server.
+Bind data directly to HTML. No virtual DOM! No wasted elements! Write only changes directly onto the relevant elements (in the client or on the server).
 
 Generally speaking, it's as if you insert variables directly onto the page, rather than rendering dead text.
 
