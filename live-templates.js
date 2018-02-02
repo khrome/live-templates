@@ -1,17 +1,17 @@
 (function(root, factory){
     if (typeof define === 'function' && define.amd){
-        define(['array-events', 'object-events', 'handlebars', 'extended-emitter', 'dom-tool', 'async-arrays', 'dirname-shim'], 
+        define(['array-events', 'object-events', 'handlebars', 'extended-emitter', 'dom-tool', 'async-arrays', 'dirname-shim'],
         factory);
     }else if(typeof exports === 'object'){
         module.exports = factory(require('array-events'), require('object-events'), require('handlebars'), require('extended-emitter'), require('dom-tool'), require('async-arrays'));
     }else{
         root.LiveTemplates = factory(
-            root.EventedArray, root.EventedObject, root.Handlebars, 
+            root.EventedArray, root.EventedObject, root.Handlebars,
             root.ExtendedEmitter, root.DOMTool, root.AsyncArrays
         );
     }
 }(this, function(EventedArray, EventedObject, Handlebars, Emitter, Dom, arrays){ //Emitter, domTool, request + optional: Handlebars, Backbone
-    
+
     var clone = function(out) {
         out = out || {};
         for (var i = 1; i < arguments.length; i++) {
@@ -23,12 +23,19 @@
         }
         return out;
     };
-    
+
+    var nodeListToHTML = function(list, delimiter){
+        return Array.prototype.slice.call(list).map(function(item){
+            return item.outerHTML || (item.reference?'<!--'+item.textContent+'-->':item.textContent);
+        }).join(delimiter || '')
+    }
+
     escapeRegEx = function(string) {
       return string.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')
     };
-    
+
     var Live = {};
+    Live.error = function(){} //throw away rendering errors
     var error = function(error){
         if(typeof error == 'string'){
             error = new Error(error);
@@ -70,11 +77,11 @@
     Live.defaultTemplates = function(loader){ //handlebars implementation
         throw new Error('please assign an adapter to \'Live.defaultTemplates\'');
     };
-    
+
     Live.defaultModel = function(model){ //backbone implementation
         throw new Error('please assign an adapter to \'Live.defaultModel\'');
     };
-    
+
     //todo: optimize recusive pattern to inline
     var setData = function(store, field, value){
         if(!Array.isArray(field)){
@@ -113,7 +120,7 @@
             }
         }
     };
-    
+
     Live.data = {}; //namespace
     Object.defineProperty(Live, 'namespace', {
         get : function(){
@@ -142,24 +149,24 @@
             return getData(Live.data, selector);
         }
     }
-    
+
     Live.defaultOpen  = '[';
     Live.defaultClose = ']';
-    
+
     Live.enableRequestTemplateLoader = function(request, directory){
         var dir = directory || '/templates/';
         Live.defaultTemplateLoader = function(name, callback){
             request(
-                { uri : dir + name }, 
+                { uri : dir + name },
                 function(e, r, d){ callback(e, (d.toString && d.toString()) || '') }
             );
         };
     };
-    
+
     Live.setGlobalContext = function(context){
         Live.bondTarget = function(){ return context };
     };
-    
+
     Live.Template = function(options){
         if(typeof options == 'string'){
             if(arguments[1] && typeof arguments[1] == 'function'){
@@ -212,7 +219,7 @@
                 ob.data = value;
             }
         });
-        
+
         /* SETUP FIRST PASS TEXTUAL OUTPUT */
         //register macros with this LiveTemplate's textual template dependency
         this.templates.macro('model', function(options){
@@ -224,10 +231,10 @@
                 return ob.templates.literal('<!--'+ob.options.opener+options.path+ob.options.closer+'-->');
             }
         });
-        
+
         var openerRE = escapeRegEx(ob.options.opener);
         var closerRE = escapeRegEx(ob.options.closer);
-        
+
         this.templates.macro({
             name : 'models',
             type : 'block'
@@ -274,7 +281,7 @@
             var jobs = queue;
             queue = [];
             scanning = false;
-            if(jobs.length) jobs.forEach(function(handler){
+            if(jobs.length) jobs.forEach(function(handler, index){
                 handler();
             })
         }
@@ -294,7 +301,15 @@
             });
             if((now - scannerStarted) > (Live.timeout || 4000)){
                 scanning = false;
-                error('DOM Scanner stalled wating on '+setups+' jobs to complete to execute '+queue.length+' handlers');
+                if(setups > 0){
+                    error(
+                        'DOM Scanner stalled wating on '+
+                        setups+
+                        ' jobs to complete to execute '+
+                        queue.length+
+                        ' handlers'
+                    );
+                }
             }
         };
         var setupStepStarted = function(name){
@@ -346,8 +361,8 @@
                     var object = ob.modelWrap(open.context);
                     if(!object.isList()) error('cannot treat an object as a list');
                     var monitor = new Live.List({
-                        list: object, 
-                        open : open.node, 
+                        list: object,
+                        open : open.node,
                         close : node,
                         tool: ob.tool,
                         template : ob
@@ -427,8 +442,8 @@
                 }
             });
         });//*/
-        
-        
+
+
         /* DO TEXT RENDER + LIVE RENDER */
         var done = function(error, tracer){
             var args = arguments;
@@ -479,17 +494,18 @@
     Live.Template.prototype.emit = function(){
         return this.events.emit.apply(this.events, arguments);
     };
-    
+
     Live.Template.prototype.select = function(selector){
+        //console.log('***', selector, this.dom)
         return this.tool.select(selector, this.dom);
     };
-    
+
     //UI state handling
     Live.Template.prototype.show = function(){
-        
+
     };
     Live.Template.prototype.hide = function(){
-        
+
     };
     Live.Template.prototype.focus = function(){
         //focus on first focusable element, make sure shown(), add focus class, emit
@@ -497,7 +513,7 @@
     Live.Template.prototype.blur = function(){
         //find selected element: blur, remove focus class, emit
     };
-    
+
     //data handling
     Live.Template.prototype.model = function(){
         return Live.model(Live, arguments);
@@ -505,15 +521,15 @@
     Live.Template.prototype.dt = function(){
         return this.modelWrap(Live.model(Live, arguments))
     };
-    
+
     Live.Template.prototype.destroy = function(){
         this.events.emitter.removeAllListeners();
         this.liveObjects.forEach(function(live){
             live.destroy();
         })
     };
-    
-    
+
+
     Live.Data = function(options, callback){
         var object = options.object;
         if(options.template) this.template = options.template;
@@ -551,7 +567,7 @@
         //todo: kaboom... delink it all
         this.object.off('change', this.field, this.setValue);
     }
-    
+
     Live.List = function(options, callback){
         var list = options.list;
         this.list = list;
@@ -602,6 +618,7 @@
             if(window && window.requestAnimationFrame) window.requestAnimationFrame(update);
             else update();
         });
+        var lastItem;
         function generateItemNodes(item, index, complete){
             if(options.template) options.template.startJob('subrender');
             var elCopies = Array.prototype.slice.apply(itemElements).map(function(node){
@@ -609,7 +626,7 @@
             });
             var theItem = item;
             tool.transform(elCopies, {
-                attributes : true, 
+                attributes : true,
                 current : item
             }, function(error, tracer){
                 if(options.template) options.template.stopJob('subrender');
@@ -625,16 +642,25 @@
                         openMarker.parentNode.insertBefore(node, closeMarker);
                     });
                 }
-                ob.template.emit('new-list-item', elCopies, theItem);
+                if(lastItem && (lastItem.id === item.id)) return complete();
+                ob.template.emit('new-list-item', {
+                    root: openMarker.parentNode,
+                    elements:elCopies,
+                    list:ob,
+                    item:theItem
+                });
+                lastItem = item;
                 complete();
             }, options.template.tracer?options.template.tracer.subtrace():undefined);
         }
-        
+
         arrays.forEachEmission(list.raw, function(item, index, done){
             item = Live.defaultModel(item); //wrap the initial items
             generateItemNodes(item, index, done);
         }, callback);
+        var lastItem;
         this.addFN = function(item, index){
+            if(lastItem && (item.id === lastItem.id))
             ob.template.startJob('generate-nodes');
             if(Live.automap && Live.defaultModel.automap && !Live.defaultModel.is(item)){
                 item = Live.defaultModel.automap(item);
@@ -643,6 +669,7 @@
             generateItemNodes(item, index, function(){
                 ob.template.stopJob('generate-nodes');
             });
+            lastItem = item;
         };
         list.on('add', this.addFN);
     };
@@ -650,7 +677,7 @@
         //todo: kaboom... delink it all
         this.list.off('change', this.field, this.addFN);
     }
-    
+
     var stacks = {};
     Live.uniqueStacks = function(id){
         if(!id) return stacks;
@@ -662,7 +689,7 @@
         var stack = stack.join("\n");
         if(stacks[id].indexOf(stack) !== -1) stacks[id].push(stack);
     }
-    
+
     Live.Component = function(options){
         Live.Templates.apply(this, arguments);
         var ob = this;
@@ -674,7 +701,7 @@
             ob.component = instance;
             v.set(data); //not a great model, improve me
             (options.fields || []).forEach(function(fieldName){
-                
+
             });
             v.emit('ready');
             if(options.onLoad) options.onLoad(instance);
@@ -682,29 +709,29 @@
         });
         return v;
     };
-    
+
     //dupe Live.Template's prototype
     Live.Component.prototype = clone(Live.Template.prototype);
     Live.Component.prototype.constructor = Live.Component;
-    
+
     function nodeValue(node){
         return node.innerHTML || node.nodeValue || node.textContent;
     }
-    
+
     function nodeMarkup(node){
         return node.outerHTML || node.data /* JSDOM BUG */ || node.textContent || node.nodeValue;
     }
-    
+
     Live.html = function html(nodeList){
         return Array.prototype.slice.apply(nodeList).map(function(node){
             return nodeMarkup(node);
         }).join('');
     }
-    
+
     Live.value = nodeValue;
-    
+
     Live.log = function(str){  };
-    
+
     Live.template = function(name){
         var promise = new Promise(function(resolve, reject){
             new Live.Template(name, function(view){
@@ -713,7 +740,7 @@
         });
         return promise;
     }
-    
+
     Live.models = function(type){
         if(typeof type === 'string'){
             if(type.indexOf('/') === -1){
@@ -721,7 +748,7 @@
             }else throw new Error('unrecognized model type');
         }else Live.defaultModel = type;
     }
-    
+
     Live.views = function(type){
         if(typeof type === 'string'){
             if(type.indexOf('/') === -1){
@@ -729,7 +756,7 @@
             }else throw new Error('unrecognized model type');
         }else Live.defaultTemplates = type;
     }
-    
+
     return Live;
-    
+
 }));

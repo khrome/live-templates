@@ -1,6 +1,6 @@
 (function(root, factory){
     if (typeof define === 'function' && define.amd){
-        define(['array-events', 'object-events', 'async-arrays', 'hashmap'], 
+        define(['array-events', 'object-events', 'async-arrays', 'hashmap'],
         factory);
     }else if(typeof exports === 'object'){
         module.exports = factory(require('array-events'), require('object-events'), require('async-arrays'), require('hashmap'));
@@ -49,6 +49,7 @@
                     handler = field;
                     field = undefined;
                 }
+                var rand = Math.random();
                 return normalizeInboundMessages(model, 'on', event, field, function(eventObject, two){
                     var target = (event == 'change')?eventObject.value:eventObject;
                     handler.apply(handler, [target, two]);
@@ -80,21 +81,21 @@
         });
         return wrap;
     };
-    
+
     eventedModel.isList = function(model){
         return EventedArray.is(model);
     }
-    
+
     eventedModel.is = function(model){
         return EventedArray.is(model) || EventedObject.is(model);
     }
-    
+
     eventedModel.automap = function(model){
         if(Array.isArray(model)) return new EventedArray(model.map(function(item){
             return new EventedObject(item);
         }));
         else return new EventedObject(model);
     }
-    
+
     return eventedModel;
 }));
