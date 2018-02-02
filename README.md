@@ -62,14 +62,14 @@ Creating Views
 `Live.template()` uses a promise based idiom
 ```javascript
     Live.template(<template>).then(function(view){
-          // view.dom is available as well as view.appendTo(el);
+        // view.dom is available as well as view.appendTo(el);
     });
 ```
 ###Objects
 `new Live.Template()` creates a new instance of the view, which is immediately ready for interaction (though devoid of any content until the callback)
 ```javascript
-      var sameView = new Live.Template('my-template.handlebars', function(view){
-          // view.dom is available as well as view.appendTo(el);
+    var sameView = new Live.Template('my-template.handlebars', function(view){
+        // view.dom is available as well as view.appendTo(el);
     });
 ```
 Either way, the produced view has a number of events (`blur`, `focus`, `activate`, `deactivate`, `dom-update`, `before-dom-update`, `object-update`, `before-object-update`) and member functions:
